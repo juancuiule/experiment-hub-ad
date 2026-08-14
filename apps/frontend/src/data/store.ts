@@ -16,6 +16,7 @@ type ExperimentStore = {
     experiment: ExperimentFlow,
     startNodeId?: string,
     locale?: string,
+    experimentSlug?: string,
   ) => Promise<void>;
   next: (data?: Context['data']) => Promise<void>;
 };
@@ -29,15 +30,24 @@ export const useExperimentStore = create<ExperimentStore>()((set, get) => ({
     experiment: ExperimentFlow,
     startNodeId?: string,
     locale?: string,
+    experimentSlug?: string,
   ) => {
     set({ isLoading: true, error: null });
     try {
+      // One session id per experiment run; not persisted across refresh
+      // (Zustand persist is intentionally off — see CLAUDE.md).
+      const sessionId = crypto.randomUUID();
       const step = await startExperiment(
         experiment,
         startNodeId,
         {
-          onCheckpoint: async (context) => {
-            await send(context);
+          onCheckpoint: async (context, checkpointName) => {
+            await send({
+              experimentSlug: experimentSlug ?? 'unknown',
+              sessionId,
+              checkpointName,
+              context,
+            });
           },
         },
         locale,

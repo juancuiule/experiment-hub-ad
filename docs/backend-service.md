@@ -300,3 +300,97 @@ The scaffold in `apps/backend/src/` demonstrates the pattern with a working exam
   config schema validation success/failure paths, `runController` error mapping).
 - `pnpm --filter @experiment-hub/backend build && node dist/main.js` — boots and
   `GET /health` returns `{"status":"ok","env":"development","uptimeSeconds":N}`.
+
+## 7. Checkpoint persistence (EXP-12, follow-on to this scaffold)
+
+Implements the `POST` this doc's §2/§5 pointed at: `send()` in
+`apps/frontend/src/data/send.ts` now POSTs to this service instead of the
+100ms `setTimeout` stub.
+
+**ORM/access layer: Drizzle** (`drizzle-orm` + the `postgres` package as the
+driver). Chosen over Prisma and raw `postgres.js`-with-hand-written-SQL because:
+- its `pgTable`/`jsonb()` column type maps the `context` column (§5) with no
+  codegen step (unlike Prisma, which needs `prisma generate` wired into the
+  build/CI pipeline before types exist),
+- `drizzle-kit generate`/`migrate` gives SQL-file migrations (readable,
+  reviewable in a PR diff) without a bespoke migration runner,
+- it stays a thin layer over SQL rather than an ORM runtime with its own query
+  engine process (Prisma) — consistent with keeping the persistence mechanism
+  swappable behind `src/checkpoints/checkpoints.repository.ts`'s interface, per
+  §5's note that the ORM choice "doesn't narrow" the schema decision.
+
+**Module layout** (`apps/backend/src/`):
+- `db/schema.ts` — the `checkpoints` table exactly as specified in §5 (7
+  columns, 3 indexes: `experiment_slug`, `session_id`, `created_at`).
+- `db/db.service.ts` / `db.module.ts` — wraps a `postgres.js` client + Drizzle
+  instance as an injectable, closed via `onModuleDestroy`. `postgres.js`
+  connects lazily on first query, so the client can be constructed
+  synchronously from `ConfigService.load()` (via `Effect.runSync`) without an
+  async factory provider.
+- `checkpoints/checkpoints.repository.ts` — the `CheckpointsRepository`
+  interface + `CHECKPOINTS_REPOSITORY` DI token, so the controller/service
+  never import Drizzle directly.
+- `checkpoints/drizzle-checkpoints.repository.ts` — the Drizzle
+  implementation, the only file that imports `db/schema.ts`.
+- `checkpoints/checkpoints.service.ts` — validates the request body with
+  `effect/Schema` (same pattern as `ConfigService`), including `context:
+  Schema.Unknown` — the payload is the engine's `Context` snapshot, stored
+  verbatim, never shape-checked here (§5).
+- `checkpoints/checkpoints.controller.ts` — `POST /checkpoints`, one line:
+  `return runController(this.checkpointsService.record(body))`.
+
+**Route**: `POST /checkpoints` (no `/api` prefix — matches `GET /health`'s
+existing convention on this service; `/api` is a Next.js App Router
+convention this backend doesn't use).
+
+**Request body**:
+```json
+{
+  "experimentSlug": "ocean",
+  "sessionId": "b3f1...-uuid",
+  "checkpointName": "intro-complete",
+  "stepId": null,
+  "context": { "data": { "age": 30 }, "branches": {}, "...": "..." }
+}
+```
+`stepId` is optional (defaults to `null` server-side). The frontend never
+sends it today: `FlowHandlers.onCheckpoint` (`packages/engine/types.ts`) is
+called as `(context, name)` — it doesn't carry the current node id, and
+`packages/engine/flow/traverse.ts` is out of scope for this change. The
+`step_id` column exists per the approved schema but is unpopulated until a
+future change (in scope for `packages/engine`, not this task) threads it
+through.
+
+**Response** (`201`): `{ "id": "<uuid>", "createdAt": "<timestamptz>" }`.
+Validation failures → `400` with issue messages; DB/driver failures →
+`500` via `UnavailableError`.
+
+**`sessionId`**: generated client-side with `crypto.randomUUID()` in
+`apps/frontend/src/data/store.ts`'s `start()`, held in a closure for the
+run's lifetime (not persisted — matches the existing "no `Zustand persist`"
+limitation). This is a placeholder, not the §3-proposed signed session
+token — see the auth gap below.
+
+**Local dev**: `docker compose up -d postgres` (repo-root
+`docker-compose.yml`, `postgres:16`, default credentials
+`postgres`/`postgres`, db `experiment_hub`, port `5432`) then
+`pnpm --filter @experiment-hub/backend db:migrate` to apply
+`apps/backend/drizzle/migrations/`. `ConfigService`'s `DATABASE_URL` default
+(`postgresql://postgres:postgres@localhost:5432/experiment_hub`) matches this
+compose file, so no `.env` is required for local dev; production must set
+`DATABASE_URL` explicitly.
+
+**Verified manually** (not part of the CI unit suite, which has no Postgres
+service wired up): ran `postgres:16` in Docker, applied the generated
+migration with `drizzle-kit migrate`, booted the built service, and
+confirmed `POST /checkpoints` both persists a row with the expected columns
+and returns `400` for a payload missing `experimentSlug`.
+
+**Known gap — no auth on this endpoint yet.** §3's participant session-token
+guard (`@nestjs/jwt`, minted when a participant starts an experiment) is not
+implemented here — it wasn't in this issue's scope (EXP-12 items 1–5), and
+building it requires a "start experiment" server round-trip that doesn't
+exist yet on either side. Right now `POST /checkpoints` accepts any
+`experimentSlug`/`sessionId` from an unauthenticated caller. Tracked as a
+follow-up issue (participant session-token guard) rather than folded into
+this task, to keep this PR reviewable and scoped to persistence.

@@ -3,10 +3,22 @@ import { describe, expect, it } from "vitest";
 import { ConfigService } from "./config.service";
 
 describe("ConfigService", () => {
-  it("parses a valid environment, defaulting NODE_ENV", async () => {
+  it("parses a valid environment, defaulting NODE_ENV and DATABASE_URL", async () => {
     const service = new ConfigService();
     const config = await Effect.runPromise(service.load({ PORT: "3001" }));
-    expect(config).toEqual({ PORT: 3001, NODE_ENV: "development" });
+    expect(config).toEqual({
+      PORT: 3001,
+      NODE_ENV: "development",
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/experiment_hub",
+    });
+  });
+
+  it("honors an explicit DATABASE_URL", async () => {
+    const service = new ConfigService();
+    const config = await Effect.runPromise(
+      service.load({ PORT: "3001", DATABASE_URL: "postgresql://user:pw@db.example.com/prod" }),
+    );
+    expect(config.DATABASE_URL).toBe("postgresql://user:pw@db.example.com/prod");
   });
 
   it("fails with a ValidationError for a non-numeric PORT", async () => {
