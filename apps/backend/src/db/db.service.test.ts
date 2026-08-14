@@ -37,7 +37,10 @@ describe("DbService", () => {
   it("builds the client from DATABASE_URL and wires drizzle to it", () => {
     const service = serviceWith("postgresql://user:pw@db:5432/experiment_hub");
 
-    expect(postgresMock).toHaveBeenCalledWith("postgresql://user:pw@db:5432/experiment_hub");
+    expect(postgresMock).toHaveBeenCalledWith("postgresql://user:pw@db:5432/experiment_hub", {
+      max: 10,
+      ssl: false,
+    });
     expect(drizzleMock).toHaveBeenCalledTimes(1);
     expect(service.db).toBe(drizzleMock.mock.results[0].value);
   });
@@ -56,7 +59,23 @@ describe("DbService", () => {
 
     expect(postgresMock).toHaveBeenCalledWith(
       "postgresql://postgres:postgres@localhost:5432/experiment_hub",
+      { max: 10, ssl: false },
     );
+  });
+
+  it("requires TLS when NODE_ENV=production", () => {
+    const config = new ConfigService();
+    const env = {
+      PORT: "3001",
+      NODE_ENV: "production",
+      DATABASE_URL: "postgresql://user:pw@db:5432/experiment_hub",
+    } as NodeJS.ProcessEnv;
+    new DbService({ load: () => config.load(env) } as ConfigService);
+
+    expect(postgresMock).toHaveBeenCalledWith("postgresql://user:pw@db:5432/experiment_hub", {
+      max: 10,
+      ssl: "require",
+    });
   });
 
   it("throws when the environment is invalid", () => {

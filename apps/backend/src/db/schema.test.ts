@@ -43,6 +43,7 @@ describe("checkpoints table", () => {
     expect(indexes).toEqual([
       "checkpoints_created_at_idx",
       "checkpoints_experiment_slug_idx",
+      "checkpoints_session_checkpoint_unique",
       "checkpoints_session_id_idx",
     ]);
   });
