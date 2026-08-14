@@ -36,8 +36,8 @@ export const useExperimentStore = create<ExperimentStore>()((set, get) => ({
         experiment,
         startNodeId,
         {
-          onCheckpoint: async (context) => {
-            await send(context);
+          onCheckpoint: async (context, name) => {
+            await send(context, name);
           },
         },
         locale,
