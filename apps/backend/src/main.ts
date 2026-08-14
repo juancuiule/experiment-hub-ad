@@ -1,23 +1,22 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
-import { NestExpressApplication } from "@nestjs/platform-express";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { Effect } from "effect";
 import { Logger } from "nestjs-pino";
 import { AppModule } from "./app.module";
 import { ConfigService } from "./config/config.service";
 
-// Explicit cap on what an unauthenticated caller can push into Postgres per
-// request. Checkpoint contexts are one experiment run's answers, so this is
-// well above any legitimate payload.
-const MAX_BODY_SIZE = "100kb";
+const DEFAULT_JSON_BODY_LIMIT = "5mb";
+const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT ?? DEFAULT_JSON_BODY_LIMIT;
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
+  app.useBodyParser("json", { limit: JSON_BODY_LIMIT });
   app.useLogger(app.get(Logger));
 
   const { PORT, CORS_ORIGINS } = Effect.runSync(app.get(ConfigService).load());
-
-  app.useBodyParser("json", { limit: MAX_BODY_SIZE });
   app.enableCors({
     origin: [...CORS_ORIGINS],
     methods: ["GET", "POST"],

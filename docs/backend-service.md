@@ -386,6 +386,10 @@ defaulting to `http://localhost:3000` outside production and to an empty
 allowlist (no cross-origin caller trusted) in production, so a deployment
 must name its frontend origin explicitly.
 
+**Request body limit**: `main.ts` raises the JSON body limit to `5mb`
+(Express defaults to `100kb`, which a full `ExperimentFlow` upload with an
+i18n dictionary can plausibly exceed); override with `JSON_BODY_LIMIT`.
+
 **Verified manually** (not part of the CI unit suite, which has no Postgres
 service wired up): ran `postgres:16` in Docker, applied the generated
 migration with `drizzle-kit migrate`, booted the built service, and
