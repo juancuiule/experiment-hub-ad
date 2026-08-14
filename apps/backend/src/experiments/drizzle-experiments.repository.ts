@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { DbService } from "../db/db.service";
 import { experiments } from "../db/schema";
@@ -18,7 +18,10 @@ export class DrizzleExperimentsRepository implements ExperimentsRepository {
           .values({ experimentSlug: slug, flow })
           .onConflictDoUpdate({
             target: experiments.experimentSlug,
-            set: { flow },
+            // created_at is untouched here — onConflictDoUpdate only sets the
+            // listed columns, so republishing preserves the original created_at
+            // while updated_at (below) reflects the republish time.
+            set: { flow, updatedAt: sql`now()` },
           })
           .returning();
         return {
@@ -26,6 +29,7 @@ export class DrizzleExperimentsRepository implements ExperimentsRepository {
           experimentSlug: row.experimentSlug,
           flow: row.flow,
           createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
         };
       },
       catch: (cause) => new UnavailableError({ message: "Failed to persist experiment", cause }),
@@ -48,6 +52,7 @@ export class DrizzleExperimentsRepository implements ExperimentsRepository {
           experimentSlug: row.experimentSlug,
           flow: row.flow,
           createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
         };
       },
       catch: (cause) => new UnavailableError({ message: "Failed to read experiment", cause }),

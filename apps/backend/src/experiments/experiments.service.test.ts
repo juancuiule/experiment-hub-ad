@@ -1,26 +1,55 @@
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Cause } from "effect";
 import { describe, expect, it } from "vitest";
-import { NotFoundError, UnavailableError } from "../common/effect/errors";
+import { NotFoundError, UnavailableError, ValidationError } from "../common/effect/errors";
 import { ExperimentsService } from "./experiments.service";
 import { ExperimentRecord, ExperimentsRepository } from "./experiments.repository";
 
+function failureOf(exit: Exit.Exit<unknown, unknown>) {
+  if (Exit.isSuccess(exit)) {
+    throw new Error("expected a failure exit");
+  }
+  const failure = Cause.failureOption(exit.cause);
+  if (failure._tag !== "Some") {
+    throw new Error("expected a Fail cause, got a defect/interruption");
+  }
+  return failure.value;
+}
+
+// Mimics onConflictDoUpdate semantics for a real Postgres unique index on
+// experimentSlug: first write for a slug sets createdAt/updatedAt together,
+// a repeat write to the same slug keeps the original createdAt and only
+// advances updatedAt — the same contract DrizzleExperimentsRepository's
+// `.onConflictDoUpdate({ set: { flow, updatedAt: sql\`now()\` } })` provides.
+// Real onConflictDoUpdate SQL behavior against Postgres is verified manually
+// (docs/backend-service.md's convention for this backend — no Postgres
+// service is wired into CI, see .github/workflows/tests.yml).
 class FakeRepository implements ExperimentsRepository {
   public upserted: { slug: string; flow: unknown }[] = [];
-  private stored = new Map<string, unknown>();
+  private stored = new Map<string, { flow: unknown; createdAt: string; updatedAt: string }>();
+  private clock = 0;
 
   constructor(private readonly fail = false) {}
+
+  private now(): string {
+    this.clock += 1;
+    return `2026-08-14T00:00:0${this.clock}.000Z`;
+  }
 
   upsert(slug: string, flow: unknown): Effect.Effect<ExperimentRecord, UnavailableError> {
     if (this.fail) {
       return Effect.fail(new UnavailableError({ message: "db unavailable" }));
     }
     this.upserted.push({ slug, flow });
-    this.stored.set(slug, flow);
+    const existing = this.stored.get(slug);
+    const createdAt = existing?.createdAt ?? this.now();
+    const updatedAt = this.now();
+    this.stored.set(slug, { flow, createdAt, updatedAt });
     return Effect.succeed({
       id: "00000000-0000-0000-0000-000000000000",
       experimentSlug: slug,
       flow,
-      createdAt: "2026-08-14T00:00:00.000Z",
+      createdAt,
+      updatedAt,
     });
   }
 
@@ -28,15 +57,16 @@ class FakeRepository implements ExperimentsRepository {
     if (this.fail) {
       return Effect.fail(new UnavailableError({ message: "db unavailable" }));
     }
-    const flow = this.stored.get(slug);
-    if (flow === undefined) {
+    const row = this.stored.get(slug);
+    if (!row) {
       return Effect.succeed(null);
     }
     return Effect.succeed({
       id: "00000000-0000-0000-0000-000000000000",
       experimentSlug: slug,
-      flow,
-      createdAt: "2026-08-14T00:00:00.000Z",
+      flow: row.flow,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
     });
   }
 }
@@ -52,6 +82,11 @@ const validFlow = {
     { type: "sequential", from: "s1", to: "end" },
   ],
   screens: [{ slug: "welcome", components: [] }],
+};
+
+const validFlowV2 = {
+  ...validFlow,
+  screens: [{ slug: "welcome", components: [], title: "v2" }],
 };
 
 // Missing edges entirely — checkNodes/checkEdgeWiring will report real
@@ -70,9 +105,42 @@ describe("ExperimentsService", () => {
 
       const result = await Effect.runPromise(service.put("ocean", validFlow));
 
-      expect(result).toEqual({ experimentSlug: "ocean", createdAt: "2026-08-14T00:00:00.000Z" });
+      expect(result).toEqual({
+        experimentSlug: "ocean",
+        createdAt: "2026-08-14T00:00:01.000Z",
+        updatedAt: "2026-08-14T00:00:02.000Z",
+      });
       expect(repository.upserted).toHaveLength(1);
       expect(repository.upserted[0].slug).toBe("ocean");
+    });
+
+    it("persists the original payload verbatim, not a schema-decoded copy", async () => {
+      // Guards against #20: Schema.decodeUnknown(ExperimentFlowPayloadSchema)
+      // strips properties the envelope doesn't declare, so if the service ever
+      // starts persisting the decoded value again, a field the engine adds to
+      // ExperimentFlow later would silently vanish here without failing.
+      const repository = new FakeRepository();
+      const service = new ExperimentsService(repository);
+      const payloadWithExtraField = { ...validFlow, futureEngineField: { nested: true } };
+
+      await Effect.runPromise(service.put("ocean", payloadWithExtraField));
+
+      expect(repository.upserted[0].flow).toEqual(payloadWithExtraField);
+      expect((repository.upserted[0].flow as Record<string, unknown>).futureEngineField).toEqual({
+        nested: true,
+      });
+    });
+
+    it("republishing the same slug preserves createdAt and advances updatedAt", async () => {
+      const repository = new FakeRepository();
+      const service = new ExperimentsService(repository);
+
+      const first = await Effect.runPromise(service.put("ocean", validFlow));
+      const second = await Effect.runPromise(service.put("ocean", validFlowV2));
+
+      expect(repository.upserted).toHaveLength(2);
+      expect(second.createdAt).toBe(first.createdAt);
+      expect(second.updatedAt).not.toBe(first.updatedAt);
     });
 
     it("rejects a flow that fails validateExperiment() and does not persist it", async () => {
@@ -82,6 +150,7 @@ describe("ExperimentsService", () => {
       const exit = await Effect.runPromiseExit(service.put("ocean", malformedFlow));
 
       expect(Exit.isFailure(exit)).toBe(true);
+      expect(failureOf(exit)).toBeInstanceOf(ValidationError);
       expect(repository.upserted).toHaveLength(0);
     });
 
@@ -92,7 +161,44 @@ describe("ExperimentsService", () => {
       const exit = await Effect.runPromiseExit(service.put("ocean", { foo: "bar" }));
 
       expect(Exit.isFailure(exit)).toBe(true);
+      expect(failureOf(exit)).toBeInstanceOf(ValidationError);
       expect(repository.upserted).toHaveLength(0);
+    });
+
+    it("rejects a slug that doesn't match the allowed pattern", async () => {
+      const repository = new FakeRepository();
+      const service = new ExperimentsService(repository);
+
+      const exit = await Effect.runPromiseExit(service.put("  ../weird slug", validFlow));
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(failureOf(exit)).toBeInstanceOf(ValidationError);
+      expect(repository.upserted).toHaveLength(0);
+    });
+
+    it("rejects a payload slug that doesn't match the URL slug", async () => {
+      const repository = new FakeRepository();
+      const service = new ExperimentsService(repository);
+
+      const exit = await Effect.runPromiseExit(
+        service.put("ocean", { ...validFlow, slug: "ocaen" }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(failureOf(exit)).toBeInstanceOf(ValidationError);
+      expect(repository.upserted).toHaveLength(0);
+    });
+
+    it("accepts a payload slug that matches the URL slug", async () => {
+      const repository = new FakeRepository();
+      const service = new ExperimentsService(repository);
+
+      const result = await Effect.runPromise(
+        service.put("ocean", { ...validFlow, slug: "ocean" }),
+      );
+
+      expect(result.experimentSlug).toBe("ocean");
+      expect(repository.upserted).toHaveLength(1);
     });
 
     it("propagates an UnavailableError from the repository", async () => {
@@ -102,6 +208,7 @@ describe("ExperimentsService", () => {
       const exit = await Effect.runPromiseExit(service.put("ocean", validFlow));
 
       expect(Exit.isFailure(exit)).toBe(true);
+      expect(failureOf(exit)).toBeInstanceOf(UnavailableError);
     });
   });
 
@@ -123,10 +230,17 @@ describe("ExperimentsService", () => {
       const exit = await Effect.runPromiseExit(service.get("missing"));
 
       expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
-        expect(failure).toBeInstanceOf(NotFoundError);
-      }
+      expect(failureOf(exit)).toBeInstanceOf(NotFoundError);
+    });
+
+    it("fails with an UnavailableError when the repository is unavailable", async () => {
+      const repository = new FakeRepository(true);
+      const service = new ExperimentsService(repository);
+
+      const exit = await Effect.runPromiseExit(service.get("ocean"));
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(failureOf(exit)).toBeInstanceOf(UnavailableError);
     });
   });
 });

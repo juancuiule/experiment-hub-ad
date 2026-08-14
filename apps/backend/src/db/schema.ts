@@ -39,8 +39,11 @@ export const experiments = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
       .notNull()
       .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .notNull()
+      .defaultNow(),
   },
-  (table) => [uniqueIndex("experiments_experiment_slug_idx").on(table.experimentSlug)],
+  (table) => [uniqueIndex("experiments_experiment_slug_unique_idx").on(table.experimentSlug)],
 );
 
 export type ExperimentRow = typeof experiments.$inferSelect;
