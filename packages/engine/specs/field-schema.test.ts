@@ -341,6 +341,63 @@ describe('numeric-input', () => {
     });
     expect(schema.safeParse(undefined).success).toBe(true);
   });
+
+  // Coercion would turn an unanswered field into 0, which is a valid answer.
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['an empty string', ''],
+    ['NaN', Number.NaN],
+  ])('fails when required and the answer is %s', (_label, value) => {
+    const schema = buildFieldSchema({
+      componentFamily: 'response',
+      template: 'numeric-input',
+      props: { dataKey: 'age', label: 'Age' },
+    });
+
+    const result = schema.safeParse(value);
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0].message).toBe('This field is required');
+  });
+
+  it('uses the configured error message when required and unanswered', () => {
+    const schema = buildFieldSchema({
+      componentFamily: 'response',
+      template: 'numeric-input',
+      props: { dataKey: 'age', label: 'Age', errorMessage: 'Tell us your age' },
+    });
+
+    const result = schema.safeParse(null);
+    expect(result.error?.issues[0].message).toBe('Tell us your age');
+  });
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['an empty string', ''],
+    ['NaN', Number.NaN],
+  ])('keeps an optional unanswered field as null when given %s', (_l, value) => {
+    const schema = buildFieldSchema({
+      componentFamily: 'response',
+      template: 'numeric-input',
+      props: { dataKey: 'age', label: 'Age', required: false, min: 0 },
+    });
+
+    const result = schema.safeParse(value);
+    expect(result.success).toBe(true);
+    expect(result.data).toBeNull();
+  });
+
+  it('still enforces the range on an optional answer', () => {
+    const schema = buildFieldSchema({
+      componentFamily: 'response',
+      template: 'numeric-input',
+      props: { dataKey: 'age', label: 'Age', required: false, min: 0, max: 120 },
+    });
+
+    expect(schema.safeParse(50).success).toBe(true);
+    expect(schema.safeParse(-1).success).toBe(false);
+  });
 });
 
 describe('slider', () => {

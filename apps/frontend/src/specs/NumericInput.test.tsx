@@ -78,16 +78,24 @@ describe('NumericInput', () => {
     expect(onNext).toHaveBeenCalledWith({ age: 30 });
   });
 
-  // Documents current behavior, not desired behavior: buildFieldSchema uses
-  // `z.coerce.number()` for a required numeric-input, and coercing the
-  // untouched `null` default yields 0 — so an empty required field submits 0
-  // instead of failing the way an untouched required slider does.
-  it('submits 0 for an untouched required field instead of blocking', async () => {
+  it('blocks submit and shows an error when required and left empty', async () => {
     const { onNext } = renderScreen([numericInput({ required: true }), submit]);
 
     await userEvent.click(screen.getByRole('button', { name: 'Submit' }));
 
-    expect(onNext).toHaveBeenCalledWith({ age: 0 });
+    expect(onNext).not.toHaveBeenCalled();
+    expect(await screen.findByText('This field is required')).toBeInTheDocument();
+  });
+
+  it('submits null when optional and left empty', async () => {
+    const { onNext } = renderScreen([
+      numericInput({ required: false }),
+      submit,
+    ]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    expect(onNext).toHaveBeenCalledWith({ age: null });
   });
 
   it('keeps an out-of-range entry from being submitted', async () => {
