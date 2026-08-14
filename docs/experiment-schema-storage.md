@@ -1,8 +1,24 @@
 # Experiment design/schema in Postgres — proposal, approved
 
-Status: **revision 3, approved 2026-08-14** (EXP-16). Direction is signed off;
-Phase 1 (§10) is being split into a scoped implementation issue. §11 and §12 are
-new in this revision. §1–§10 are unchanged from rev 2 and still hold.
+Status: **revision 3, approved 2026-08-14** (EXP-16), with revision-4 accuracy
+corrections against what Phase 1 actually shipped (EXP-19/PR #11) and a Phase 2
+requirement added per PR review of #9/#10/#11 (EXP-28). Direction remains signed
+off; Phase 1 (§10) is being split into a scoped implementation issue. §11 and §12
+are new since rev 2. §1–§10 are otherwise unchanged from rev 2 and still hold.
+
+**Revision 4 changes** (docs-accuracy pass, no change to the approved direction,
+2026-08-14): three corrections found during PR review of #9/#10/#11 —
+(1) §11 claimed "one row per experiment version"; Phase 1 as scoped and shipped is
+one row per slug, upserted in place, with no history until §10 Phase 3 — §11 now
+says so explicitly and states the interim mitigation (documented Postgres backups).
+(2) §5 and §8 claimed checkpoint-payload validation "falls out of Phase 1 for
+free"/"closes the original EXP-16 gap"; Phase 1 as merged adds no
+`checkpoints`→`experiments` wiring at all (that's a fast-follow), so both are
+reworded to "unblocked by Phase 1." (3) §10 Phase 2 now states an explicit
+requirement — fetch the experiment flow once per session, never refetch mid-run —
+since a stale-then-refetched TanStack Query cache could otherwise hand a
+participant a different graph mid-session than `traverse()`'s state was computed
+against, the same hazard §10 Problem 2 names for Phase 3, one phase earlier.
 
 **Revision 3 changes** (per reviewer comment approving rev 2, 2026-08-14): the
 reviewer approved option A, phased, and added two requirements: (1) confirm the
@@ -195,8 +211,11 @@ authoring bottleneck at all. See §8–§10 for why A's two rev-1 objections (sc
 drift risk, loss of `tsc` safety net) are more tractable than rev 1 assumed, and for
 a phased path that de-risks the largest change in the repo by shipping it in
 stages rather than one migration. Checkpoint-payload validation (this issue's
-original trigger) falls out of Phase 1 for free, via the same mechanism that makes
-authoring safe — see §8.
+original trigger) is unblocked by Phase 1, via the same mechanism that makes
+authoring safe — see §8. "Unblocked," not "closed": Phase 1 as scoped and merged
+(EXP-19/PR #11) adds the `experiments` table and its validated write/read path, but
+does not itself wire `POST /checkpoints` up to it — that wiring, and the field-level
+checks §2 shows are the genuinely hard part, remain a fast-follow.
 
 ## 6. Explicitly out of scope for this proposal
 
@@ -261,10 +280,11 @@ Concretely, this means:
   `collectFields()`): once `apps/backend` can load a given `experimentSlug`'s
   `ExperimentFlow` from the DB (Phase 1), `POST /checkpoints` can run the same
   field-collection logic against the submitted `context` that `Screen.tsx` already
-  runs client-side — this is what closes the original EXP-16 gap, and it's the same
-  "derive validation the way the frontend does" outcome asked for in the reviewer
-  comment, achieved by calling the existing function with a DB-sourced argument
-  instead of writing new logic.
+  runs client-side — this is what *would* close the original EXP-16 gap once
+  `POST /checkpoints` is actually wired to call it (not yet done as of Phase 1/PR
+  #11, see §5), and it's the same "derive validation the way the frontend does"
+  outcome asked for in the reviewer comment, achieved by calling the existing
+  function with a DB-sourced argument instead of writing new logic.
 - The per-run field-set variance from `branch`/`fork`/`loop` (§2) doesn't go away
   under option A — but it stops being a "does the mirror encode this correctly"
   problem, because there is no separate mirror to keep in sync. The backend runs
@@ -346,8 +366,9 @@ storage (§9), and the two problems above — as one large, high-risk change:
   calling the endpoint (a script, or an engineer/researcher using a shared
   credential — see §6's auth caveat) rather than editing a TS file + PR + deploy.
   `apps/frontend/src/data/experiments/` TS files can stay as-is during this phase
-  (nothing reads from the DB yet) — this phase is purely additive and lands
-  `POST /checkpoints` validation (§8) as a side effect, with zero frontend risk.
+  (nothing reads from the DB yet) — this phase is purely additive and unblocks
+  `POST /checkpoints` validation (§8, §5) once that wiring is built, with zero
+  frontend risk.
 - **Phase 2 — frontend reads from the DB instead of the static `EXPERIMENTS`
   import.** `apps/frontend/app/(experiments-layout)/experiments/[slug]/page.tsx`
   fetches the experiment instead of importing it — natural fit for the TanStack
@@ -355,6 +376,23 @@ storage (§9), and the two problems above — as one large, high-risk change:
   actually delivers "no redeploy to change an experiment." Decide here whether the
   TS files are deleted (DB fully authoritative) or kept as a local-dev/offline
   fallback (§7 Q4).
+
+  **Requirement: fetch the experiment flow once per session, never refetch
+  mid-run.** This is the same graph-consistency hazard Problem 2 (above) names for
+  Phase 3 versioning, showing up one phase earlier via TanStack Query's own
+  caching: `traverse()`'s state (current node, accumulated `Context`) is only
+  meaningful relative to the exact `ExperimentFlow` object it was computed against
+  (`packages/engine/flow/traverse.ts`). If the query for a given `experimentSlug`
+  has a `staleTime` that lets it go stale mid-session, a background refetch — or a
+  second browser tab open on the same experiment — could hand a participant
+  mid-run a *different* graph object than the one their accumulated state was
+  computed against, silently corrupting traversal. Phase 2's fetch must be scoped
+  and cached for the lifetime of one participant session (e.g. queried once on
+  experiment start, with `staleTime: Infinity` for that session's query key, no
+  automatic refetch-on-window-focus/reconnect), not the general-purpose
+  `staleTime` defaults the TanStack Query client layer (`3ddebba`, EXP-15) uses
+  elsewhere. This is a Phase 2 requirement to design in from the start, not a bug
+  to fix after the fact.
 - **Phase 3 — versioning (Problem 2) and a researcher-facing editor.** The
   larger, genuinely under-designed piece. Versioning can't ship without deciding
   the product question above; an editor UI needs researcher auth (§6, currently
@@ -377,12 +415,26 @@ Confirmed requirement from sign-off: the researcher-facing side (defining/updati
 data at a checkpoint) must be two separate tables, not one blob store doing both
 jobs. This was already this proposal's design, not a change:
 
-- **`experiments`** (new, Phase 1) — one row per experiment version, holding the
-  `ExperimentFlow` graph (`nodes`, `edges`, `screens`, `options`) as JSONB, keyed by
-  `experimentSlug` (+ a version identifier once §10 Phase 3 versioning lands).
-  Written by researchers/engineers (the authoring path), read by both
-  `apps/frontend` (Phase 2, to render) and `apps/backend` (to validate checkpoint
-  submissions against, per §8).
+- **`experiments`** (new, Phase 1) — holds the `ExperimentFlow` graph (`nodes`,
+  `edges`, `screens`, `options`) as JSONB, keyed by `experimentSlug`. **As scoped
+  for Phase 1 and shipped in EXP-19/PR #11, this is one row per slug, upserted in
+  place on every `PUT /experiments/:slug`** — not one row per version. A version
+  identifier, and the "one row per version" shape this section originally implied,
+  is §10 Phase 3 territory and does not exist yet. Written by researchers/engineers
+  (the authoring path), read by both `apps/frontend` (Phase 2, to render) and
+  `apps/backend` (to validate checkpoint submissions against, per §8).
+
+  **Phase 1 has no history; a bad publish is unrecoverable.** Today's TS-authored
+  `EXPERIMENTS` record gets version history for free via git — every prior graph is
+  one `git log`/`git show` away, and a bad change is a revert. Phase 1's upsert-in-
+  place `experiments` table gives that up: once `validateExperiment()` passes (§10
+  Problem 1), the write overwrites the previous graph with nothing in the DB to
+  recover it from. §10 Phase 3 is where version history returns by design. Until
+  then, the mitigation is operational, not schema: production `DATABASE_URL`
+  Postgres instances must have routine `pg_dump` backups (or equivalent
+  point-in-time recovery) in place *before* Phase 1's write path is exposed to
+  real publishes, and that expectation should be stated in Phase 1's own
+  deployment checklist, not assumed.
 - **`checkpoints`** (existing, `apps/backend/src/db/schema.ts`, landed in EXP-12) —
   one row per checkpoint submission, holding a participant's accumulated `Context`
   as JSONB, keyed by `experimentSlug` + `sessionId` + `checkpointName`. Written by
