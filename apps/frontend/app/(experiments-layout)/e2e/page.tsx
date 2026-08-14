@@ -17,5 +17,5 @@ export default async function E2EPage() {
     return <ValidationErrors errors={errors} />;
   }
 
-  return <Experiment experiment={testExperiment} />;
+  return <Experiment experiment={testExperiment} experimentSlug="e2e" />;
 }

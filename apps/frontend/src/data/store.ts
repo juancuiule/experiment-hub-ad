@@ -5,6 +5,7 @@ import {
 } from '@experiment-hub/engine/flow';
 import { Context, ExperimentFlow, FlowStep } from '@experiment-hub/engine/types';
 import { send } from './send';
+import { getSessionId } from './session-id';
 import { create } from 'zustand';
 
 type ExperimentStore = {
@@ -14,9 +15,9 @@ type ExperimentStore = {
   reset: () => void;
   start: (
     experiment: ExperimentFlow,
+    experimentSlug: string,
     startNodeId?: string,
     locale?: string,
-    experimentSlug?: string,
   ) => Promise<void>;
   next: (data?: Context['data']) => Promise<void>;
 };
@@ -28,22 +29,21 @@ export const useExperimentStore = create<ExperimentStore>()((set, get) => ({
   reset: () => set({ step: null, isLoading: false, error: null }),
   start: async (
     experiment: ExperimentFlow,
+    experimentSlug: string,
     startNodeId?: string,
     locale?: string,
-    experimentSlug?: string,
   ) => {
     set({ isLoading: true, error: null });
     try {
-      // One session id per experiment run; not persisted across refresh
-      // (Zustand persist is intentionally off — see CLAUDE.md).
-      const sessionId = crypto.randomUUID();
+      // One session id per tab, not per start() call — see session-id.ts.
+      const sessionId = getSessionId();
       const step = await startExperiment(
         experiment,
         startNodeId,
         {
           onCheckpoint: async (context, checkpointName) => {
             await send({
-              experimentSlug: experimentSlug ?? 'unknown',
+              experimentSlug,
               sessionId,
               checkpointName,
               context,

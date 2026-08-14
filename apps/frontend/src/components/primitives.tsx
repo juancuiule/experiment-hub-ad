@@ -15,9 +15,30 @@ export type RenderProps = {
   sharedOptions?: Record<string, Option[]>;
 };
 
-export function OptionTooltip({ text }: { text: string }) {
+/** Downward-pointing arrow shared by every tooltip bubble. */
+export function TooltipArrow() {
   return (
-    <div className="group/tooltip relative flex items-center">
+    <div
+      className="bg-content-active -mt-px h-1.5 w-3"
+      style={{ clipPath: 'polygon(50% 100%, 0 0, 100% 0)' }}
+    />
+  );
+}
+
+/** Info icon revealing `children` in a bubble on hover. */
+export function InfoTooltip({
+  children,
+  className,
+  bubbleClassName,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  bubbleClassName?: string;
+}) {
+  return (
+    <div
+      className={twMerge('group/tooltip relative flex items-center', className)}
+    >
       <Info className="text-content-secondary size-3.5 cursor-help" />
       <div
         className={twMerge(
@@ -27,16 +48,22 @@ export function OptionTooltip({ text }: { text: string }) {
           'pointer-events-none z-50 mb-1 flex w-max max-w-64 flex-col items-center',
         )}
       >
-        <div className="bg-content-active text-content-inverted max-w-48 rounded-md px-2 py-1 text-left text-xs whitespace-normal shadow-md">
-          {text}
-        </div>
         <div
-          className="bg-content-active -mt-px h-1.5 w-3"
-          style={{ clipPath: 'polygon(50% 100%, 0 0, 100% 0)' }}
-        />
+          className={twMerge(
+            'bg-content-active text-content-inverted rounded-md px-2 py-1 text-left text-xs whitespace-normal shadow-md',
+            bubbleClassName,
+          )}
+        >
+          {children}
+        </div>
+        <TooltipArrow />
       </div>
     </div>
   );
+}
+
+export function OptionTooltip({ text }: { text: string }) {
+  return <InfoTooltip bubbleClassName="max-w-48">{text}</InfoTooltip>;
 }
 
 export function FieldError({ message }: { message?: string }) {
