@@ -171,8 +171,9 @@ When picking up an issue:
 3. Run `pnpm lint && pnpm test` before committing. Both must pass.
 4. Use conventional commit prefixes: `feat:`, `fix:`, `test:`, `refactor:`.
 5. Open a PR against `main` with `gh pr create`, referencing the issue number.
-6. CI runs `pnpm test` and `pnpm test:e2e` automatically — both must pass before merge.
-7. Remove the worktree once the PR merges (`git worktree remove`).
+6. Run the `explain-diff` skill against the PR diff and attach the resulting HTML walkthrough (background, intuition, code walkthrough, comprehension quiz) as a work product on the issue before requesting review. Mandatory for changes touching `packages/engine/`, `apps/backend/`, or any file listed under **Sensitive files** below; reviewer discretion for small, self-contained frontend-only tweaks.
+7. CI runs `pnpm test` and `pnpm test:e2e` automatically — both must pass before merge.
+8. Remove the worktree once the PR merges (`git worktree remove`).
 
 **`agents.sh`** at the repo root (untracked; present only in the maintainer's local checkout) is a fan-out script that launches one Claude Code agent per GitHub issue in a tmux grid, each in its own git worktree, for parallel multi-issue development.
 
