@@ -192,7 +192,7 @@ From git history:
 
 `apps/frontend` (participant-facing app) reads no environment variables at runtime beyond `NEXT_PUBLIC_BACKEND_URL` (backend origin for checkpoint POSTs, defaults to `http://localhost:3001`; see `apps/frontend/src/data/send.ts`) and the debug-panel `NODE_ENV` guards. The E2E CI job sets `NODE_ENV=test`. There is no `.env.example`.
 
-`apps/backend` reads `PORT`, `NODE_ENV`, and `DATABASE_URL` via `apps/backend/src/config/config.service.ts` (see `docs/backend-service.md`); all three have local-dev defaults, so no `.env` is required to run `pnpm dev:backend` against the repo-root `docker-compose.yml` Postgres.
+`apps/backend` reads `PORT`, `NODE_ENV`, `DATABASE_URL`, and `API_SHARED_SECRET` via `apps/backend/src/config/config.service.ts` (see `docs/backend-service.md`); the first three have local-dev defaults, so no `.env` is required to run `pnpm dev:backend` against the repo-root `docker-compose.yml` Postgres. `API_SHARED_SECRET` is optional and unset by default — when unset, `SharedSecretGuard` (`apps/backend/src/common/auth/shared-secret.guard.ts`) is a no-op; it must be set before any internet-reachable deploy (`docs/backend-service.md` §8).
 
 ## Sensitive files
 
