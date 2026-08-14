@@ -5,9 +5,12 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "dev": "pnpm --filter @experiment-hub/frontend dev",
+    "dev:backend": "pnpm --filter @experiment-hub/backend start:dev",
     "build": "pnpm --filter @experiment-hub/frontend build",
+    "build:backend": "pnpm --filter @experiment-hub/backend build",
     "start": "pnpm --filter @experiment-hub/frontend start",
-    "lint": "pnpm --filter @experiment-hub/frontend lint",
+    "start:backend": "pnpm --filter @experiment-hub/backend start",
+    "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:e2e": "pnpm --filter @experiment-hub/frontend test:e2e"

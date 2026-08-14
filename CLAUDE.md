@@ -36,7 +36,9 @@ Vitest accepts a file path or pattern as a positional argument. Test files live 
 
 ## Architecture
 
-This is a pnpm workspace with two packages that must stay decoupled:
+This is a pnpm workspace. `packages/engine` and `apps/frontend` must stay decoupled
+(no React in the engine). `apps/backend` is a new NestJS service, currently scaffold
+stage only — see `docs/backend-service.md` for its scope and open questions.
 
 ```
 packages/engine/             # Pure TypeScript engine — zero React imports
@@ -97,6 +99,17 @@ apps/frontend/               # Next.js React application
       control/               # Conditional, ForEach
     specs/                   # Unit tests for React components
   e2e/                       # Playwright tests
+
+apps/backend/                 # NestJS service (scaffold + proposal stage — see docs/backend-service.md)
+                               # Published in-workspace as @experiment-hub/backend
+                               # Uses Effect (effect-ts) for service-layer error handling
+  src/
+    main.ts                   # Bootstrap
+    app.module.ts
+    config/                   # ConfigModule/ConfigService — env validation via effect/Schema
+    logging/                  # LoggingModule — nestjs-pino structured logging
+    common/effect/            # errors.ts (tagged DomainError union), run.ts (runController adapter)
+    health/                   # Demo module: GET /health, shows the Effect-service convention
 
 docs/                        # Reference documentation (see below)
 agents.sh                    # Fan-out script (see Agent workflow below) (untracked)
@@ -197,6 +210,7 @@ The `docs/` folder contains precise reference documentation — use it before re
 | `docs/answer-piping.md` | String interpolation in labels and content (`{{ }}` syntax) |
 | `docs/i18n.md` | Localized message dictionary and the `[[ ]]` token |
 | `docs/validate.md` | All validation error codes with explanations |
+| `docs/backend-service.md` | `apps/backend/` scope, boundaries, auth/logging/DB proposal, NestJS+Effect conventions |
 
 ## Where to look first
 
