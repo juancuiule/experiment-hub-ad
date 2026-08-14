@@ -5,13 +5,15 @@ import {
   DropdownComponent,
   Option,
 } from '@experiment-hub/engine/components/response';
-import { resolveOptions, resolveValuesInString } from '@experiment-hub/engine/resolve';
+import {
+  resolveOptions,
+  resolveValuesInString,
+} from '@experiment-hub/engine/resolve';
 import { Context, ContextData } from '@experiment-hub/engine/types';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { ChevronDown } from 'lucide-react';
 import { Controller, UseFormReturn } from 'react-hook-form';
-import { Label } from '../Label';
-import { FieldError } from '../primitives';
+import { Field } from './Field';
 
 type Props = {
   component: DropdownComponent;
@@ -21,22 +23,22 @@ type Props = {
 };
 
 export function Dropdown({ component, form, context, sharedOptions }: Props) {
-  const {
-    control,
-    formState: { errors },
-  } = form;
   const { dataKey } = component.props;
 
   return (
     <Controller
-      control={control}
+      control={form.control}
       name={dataKey}
       defaultValue={defaultPerTemplate(component)}
       render={({ field }) => (
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={dataKey} context={context} tooltip={component.props.labelTooltip}>
-            {component.props.label}
-          </Label>
+        <Field
+          form={form}
+          context={context}
+          dataKey={dataKey}
+          label={component.props.label}
+          labelTooltip={component.props.labelTooltip}
+          labelHtmlFor={dataKey}
+        >
           <SelectPrimitive.Root
             value={field.value}
             onValueChange={field.onChange}
@@ -78,10 +80,7 @@ export function Dropdown({ component, form, context, sharedOptions }: Props) {
               </SelectPrimitive.Content>
             </SelectPrimitive.Portal>
           </SelectPrimitive.Root>
-          <FieldError
-            message={errors[dataKey]?.message as string | undefined}
-          />
-        </div>
+        </Field>
       )}
     />
   );

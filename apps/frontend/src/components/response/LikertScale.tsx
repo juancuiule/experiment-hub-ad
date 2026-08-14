@@ -11,7 +11,7 @@ import * as RadioGroupPrimitive from '@radix-ui/react-radio-group';
 import { Controller, UseFormReturn } from 'react-hook-form';
 import { twMerge } from 'tailwind-merge';
 import { Label } from '../Label';
-import { FieldError } from '../primitives';
+import { Field } from './Field';
 
 type Props = {
   component: LikertScaleComponent;
@@ -26,10 +26,6 @@ export function LikertScale({
   context,
   sharedOptions,
 }: Props) {
-  const {
-    control,
-    formState: { errors },
-  } = form;
   const { dataKey } = component.props;
   const options = resolveLikertOptionsSource(
     component.props.options,
@@ -38,14 +34,18 @@ export function LikertScale({
 
   return (
     <Controller
-      control={control}
+      control={form.control}
       name={dataKey}
       defaultValue={defaultPerTemplate(component)}
       render={({ field }) => (
-        <div className="flex flex-col gap-1">
-          <Label id={`${dataKey}-label`} context={context} tooltip={component.props.labelTooltip}>
-            {component.props.label}
-          </Label>
+        <Field
+          form={form}
+          context={context}
+          dataKey={dataKey}
+          label={component.props.label}
+          labelTooltip={component.props.labelTooltip}
+          labelId={`${dataKey}-label`}
+        >
           <RadioGroupPrimitive.Root
             value={field.value}
             onValueChange={field.onChange}
@@ -97,10 +97,7 @@ export function LikertScale({
               );
             })}
           </RadioGroupPrimitive.Root>
-          <FieldError
-            message={errors[dataKey]?.message as string | undefined}
-          />
-        </div>
+        </Field>
       )}
     />
   );

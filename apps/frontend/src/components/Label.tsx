@@ -2,9 +2,9 @@
 
 import { resolveValuesInString } from '@experiment-hub/engine/resolve';
 import { Context } from '@experiment-hub/engine/types';
-import { Info } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { twMerge } from 'tailwind-merge';
+import { InfoTooltip } from './primitives';
 
 interface Props extends React.LabelHTMLAttributes<HTMLLabelElement> {
   children: string;
@@ -57,30 +57,6 @@ function RenderText({
   );
 }
 
-function Tooltip({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="group/tooltip relative flex w-fit items-center">
-      <Info className="text-content-secondary size-3.5 cursor-help" />
-      <div
-        className={twMerge(
-          'absolute bottom-full left-1/2 origin-bottom -translate-x-1/2',
-          'group-hover/tooltip:scale-100 group-hover/tooltip:opacity-100',
-          'scale-95 opacity-0 transition-[opacity,transform] duration-150 ease-out',
-          'pointer-events-none z-50 mb-1 flex w-max max-w-64 flex-col items-center',
-        )}
-      >
-        <div className="bg-content-active text-content-inverted block rounded-md px-2 py-1 text-left text-xs whitespace-normal shadow-md">
-          {children}
-        </div>
-        <div
-          className="bg-content-active -mt-px h-1.5 w-3"
-          style={{ clipPath: 'polygon(50% 100%, 0 0, 100% 0)' }}
-        />
-      </div>
-    </div>
-  );
-}
-
 export function Label({ children, context, tooltip, ...props }: Props) {
   const label = (
     <label {...props}>
@@ -92,9 +68,9 @@ export function Label({ children, context, tooltip, ...props }: Props) {
     return (
       <div className="flex items-center gap-2">
         {label}
-        <Tooltip>
+        <InfoTooltip className="w-fit" bubbleClassName="block">
           <RenderText context={context}>{tooltip}</RenderText>
-        </Tooltip>
+        </InfoTooltip>
       </div>
     );
   }
