@@ -400,11 +400,57 @@ migration with `drizzle-kit migrate`, booted the built service, and
 confirmed `POST /checkpoints` both persists a row with the expected columns
 and returns `400` for a payload missing `experimentSlug`.
 
-**Known gap — no auth on this endpoint yet.** §3's participant session-token
-guard (`@nestjs/jwt`, minted when a participant starts an experiment) is not
-implemented here — it wasn't in this issue's scope (EXP-12 items 1–5), and
-building it requires a "start experiment" server round-trip that doesn't
-exist yet on either side. Right now `POST /checkpoints` accepts any
-`experimentSlug`/`sessionId` from an unauthenticated caller. Tracked as a
-follow-up issue (participant session-token guard) rather than folded into
-this task, to keep this PR reviewable and scoped to persistence.
+**Known gap — no per-participant auth on this endpoint yet.** §3's participant
+session-token guard (`@nestjs/jwt`, minted when a participant starts an
+experiment) is not implemented here — it wasn't in this issue's scope (EXP-12
+items 1–5), and building it requires a "start experiment" server round-trip
+that doesn't exist yet on either side. `POST /checkpoints` still accepts any
+`experimentSlug`/`sessionId`. Tracked as a follow-up issue (participant
+session-token guard, EXP-13) rather than folded into this task, to keep this
+PR reviewable and scoped to persistence. §8 below covers the coarser,
+whole-service gate that stands in ahead of that per-participant guard.
+
+## 8. Deployment precondition — shared-secret guard (EXP-27, GH #45 / #32)
+
+Both write endpoints this service exposes — `POST /checkpoints` (§7, live)
+and `PUT /experiments/:slug` (EXP-19, in review as of this writing) — were
+unauthenticated when first shipped, each flagged as a known gap in its own
+PR. That's an acceptable interim state for a service with no production
+traffic and nothing deployed, but it is **not** acceptable once this service
+is reachable from the internet: an unauthenticated `PUT /experiments/:slug`
+lets a stranger overwrite what participants see, which is more severe than
+the `POST /checkpoints` gap above.
+
+**Hard precondition: do not expose this service to the public internet until
+`API_SHARED_SECRET` is set.** `SharedSecretGuard`
+(`src/common/auth/shared-secret.guard.ts`) is registered globally via
+`APP_GUARD` (`app.module.ts`), so it covers every current and future
+non-`GET` route — including `PUT /experiments/:slug` once that controller
+merges, with no additional wiring needed there. Behavior:
+
+- `GET` requests (health checks, experiment reads) are always allowed —
+  the guard only gates writes.
+- If `API_SHARED_SECRET` is unset (the default in local dev, test, and CI),
+  the guard is a no-op and every request is allowed — this is intentional so
+  local development and the existing test suite don't need new
+  configuration, **not** a safe default for a deployed instance.
+- If `API_SHARED_SECRET` is set, every non-`GET` request must carry
+  `Authorization: Bearer <that secret>` or receive a `401`. There is one
+  shared secret for the whole service (not per-caller), matching §3's
+  framing of this as the cheap stopgap ahead of real participant/researcher
+  auth, not a replacement for it.
+- `Authorization` headers are already redacted in logs unconditionally (§4),
+  so the secret does not leak into structured logging as callers start
+  sending it.
+
+**Alternative: network-level restriction instead of the header.** If the
+actual deployment plan is to keep this service off the public internet
+entirely (private network / VPC-only, not exposed via a public load
+balancer or ingress), that satisfies the same goal without requiring
+`API_SHARED_SECRET` to be set. This doc is the place that decision must be
+recorded before deploying — silently relying on "nobody's found the URL yet"
+is the anti-pattern GH #32 flagged. As of this writing, no production
+deployment target has been chosen (§4 also notes the log sink is undecided
+for the same reason), so neither the shared secret nor a network boundary
+has been configured yet; whichever path is taken, do it before this service
+is internet-reachable, and update this section to say which one was chosen.

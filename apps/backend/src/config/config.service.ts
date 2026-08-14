@@ -26,6 +26,10 @@ const EnvSchema = Schema.Struct({
   }),
   DATABASE_URL: Schema.String.pipe(Schema.minLength(1)),
   CORS_ORIGINS: OriginList,
+  // Unset means SharedSecretGuard runs as a no-op (local dev/test). Must be set
+  // before any internet-reachable deploy — see SharedSecretGuard and
+  // docs/backend-service.md's deployment precondition note.
+  API_SHARED_SECRET: Schema.optional(Schema.String),
 });
 
 export type AppConfig = Schema.Schema.Type<typeof EnvSchema>;
@@ -41,6 +45,7 @@ export class ConfigService {
       // An empty allowlist in production means no cross-origin browser caller
       // is trusted until CORS_ORIGINS is set explicitly.
       CORS_ORIGINS: env.CORS_ORIGINS ?? (isProduction ? "" : LOCAL_DEV_CORS_ORIGINS),
+      API_SHARED_SECRET: env.API_SHARED_SECRET,
     }).pipe(
       Effect.mapError(
         (parseError) =>
