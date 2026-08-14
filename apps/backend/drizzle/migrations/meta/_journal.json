@@ -15,6 +15,13 @@
       "when": 1786687891413,
       "tag": "0001_youthful_queen_noir",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786693173112,
+      "tag": "0002_lush_next_avengers",
+      "breakpoints": true
     }
   ]
 }

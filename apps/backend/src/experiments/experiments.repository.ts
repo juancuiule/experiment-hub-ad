@@ -6,6 +6,7 @@ export interface ExperimentRecord {
   readonly experimentSlug: string;
   readonly flow: unknown;
   readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 // Behind an interface (same pattern as CheckpointsRepository) so the
