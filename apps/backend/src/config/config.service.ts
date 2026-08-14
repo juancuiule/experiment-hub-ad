@@ -7,6 +7,7 @@ const EnvSchema = Schema.Struct({
   NODE_ENV: Schema.optionalWith(Schema.Literal("development", "test", "production"), {
     default: () => "development" as const,
   }),
+  DATABASE_URL: Schema.String.pipe(Schema.minLength(1)),
 });
 
 export type AppConfig = Schema.Schema.Type<typeof EnvSchema>;
@@ -17,6 +18,8 @@ export class ConfigService {
     return Schema.decodeUnknown(EnvSchema)({
       PORT: env.PORT ?? "3001",
       NODE_ENV: env.NODE_ENV,
+      DATABASE_URL:
+        env.DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/experiment_hub",
     }).pipe(
       Effect.mapError(
         (parseError) =>

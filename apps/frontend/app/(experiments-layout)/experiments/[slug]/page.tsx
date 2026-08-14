@@ -49,6 +49,7 @@ export default async function Home(props: Props) {
         startingNode={startingNode}
         experiment={experiment}
         locale={locale}
+        experimentSlug={slug}
       />
       {process.env.NODE_ENV === 'development' && (
         <details className="my-2">
