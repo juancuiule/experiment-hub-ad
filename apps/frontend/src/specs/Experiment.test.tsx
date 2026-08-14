@@ -56,7 +56,9 @@ describe('Experiment', () => {
     rerender(<Experiment experiment={flowB} />);
 
     await screen.findByText('Content from experiment B');
-    expect(screen.queryByText('Content from experiment A')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Content from experiment A'),
+    ).not.toBeInTheDocument();
   });
 
   it('does not restart when the same experiment reference is rerendered', async () => {
@@ -69,5 +71,19 @@ describe('Experiment', () => {
     await waitFor(() => {
       expect(useExperimentStore.getState().step).toBe(stepBefore);
     });
+  });
+
+  it('surfaces a start failure instead of rendering a blank screen', async () => {
+    // No start node reachable — startExperiment throws, so start() sets `error`
+    // and leaves `step` null.
+    const brokenFlow = { nodes: [], edges: [], screens: [] } as ExperimentFlow;
+
+    render(<Experiment experiment={brokenFlow} />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/went wrong/i);
+    expect(
+      screen.getByRole('button', { name: /try again/i }),
+    ).toBeInTheDocument();
   });
 });

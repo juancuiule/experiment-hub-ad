@@ -9,4 +9,10 @@ async function bootstrap() {
   await app.listen(process.env.PORT ?? 3001);
 }
 
-bootstrap();
+bootstrap().catch((error) => {
+  // Nest's logger isn't available when bootstrap itself fails (bad config,
+  // port in use), so log to stderr and exit non-zero instead of dying as an
+  // unhandled rejection with no diagnostics.
+  console.error("Failed to bootstrap the backend:", error);
+  process.exit(1);
+});
