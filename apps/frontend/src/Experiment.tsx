@@ -10,7 +10,7 @@ type Props = {
   startingNode?: string;
   experiment: ExperimentFlow;
   locale?: string;
-  experimentSlug?: string;
+  experimentSlug: string;
 };
 
 export default function Experiment(props: Props) {
@@ -20,9 +20,9 @@ export default function Experiment(props: Props) {
 
   useEffect(() => {
     if (!step || step.experiment !== experiment) {
-      start(experiment, startingNode, locale, experimentSlug);
+      start(experiment, experimentSlug, startingNode, locale);
     }
-  }, [experiment, startingNode, locale, experimentSlug]);
+  }, [experiment, experimentSlug, startingNode, locale]);
 
   useEffect(() => reset, [reset]);
 
