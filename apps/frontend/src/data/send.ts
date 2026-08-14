@@ -1,11 +1,6 @@
+import { useMutation, type UseMutationResult } from '@tanstack/react-query';
 import { Context } from '@experiment-hub/engine/types';
-
-// Backend origin for the NestJS service added in apps/backend (see
-// docs/backend-service.md). Client-side code (this file runs in the
-// browser via the store's onCheckpoint handler), so the var must be
-// NEXT_PUBLIC_-prefixed to be inlined at build time.
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3001';
-const REQUEST_TIMEOUT_MS = 5000;
+import { apiFetch } from './api-client';
 
 export type CheckpointSubmission = {
   experimentSlug: string;
@@ -18,27 +13,22 @@ export type CheckpointSubmission = {
 // `stepId` isn't included: the engine's onCheckpoint handler (traverse.ts)
 // only passes (context, name), not the current node id, and packages/engine
 // traversal logic is out of scope for this change.
-export async function send({
-  experimentSlug,
-  sessionId,
-  checkpointName,
-  context,
-}: CheckpointSubmission): Promise<void> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+export async function sendCheckpoint(submission: CheckpointSubmission): Promise<void> {
+  await apiFetch('/checkpoints', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(submission),
+  });
+}
 
-  try {
-    const response = await fetch(`${BACKEND_URL}/checkpoints`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ experimentSlug, sessionId, checkpointName, context }),
-      signal: controller.signal,
-    });
+// Alias kept for callers outside React (the Zustand store's onCheckpoint
+// handler in store.ts runs outside the component tree, so it can't use the
+// useMutation hook below).
+export const send = sendCheckpoint;
 
-    if (!response.ok) {
-      throw new Error(`Checkpoint persistence failed with status ${response.status}`);
-    }
-  } finally {
-    clearTimeout(timeout);
-  }
+// Component-level entry point: wraps sendCheckpoint in TanStack Query's
+// shared retry/loading-state handling (see query-client.ts). Future
+// checkpoint-triggering UI should prefer this over calling send() directly.
+export function useSendCheckpointMutation(): UseMutationResult<void, Error, CheckpointSubmission> {
+  return useMutation({ mutationFn: sendCheckpoint });
 }
