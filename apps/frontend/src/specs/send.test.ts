@@ -2,8 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import * as React from 'react';
-import { sendCheckpoint, submitCheckpoint, useSendCheckpointMutation } from '@/src/data/send';
-import { queryClient } from '@/src/data/query-client';
+import {
+  __getImperativeQueryClientForTests as getImperativeQueryClient,
+  sendCheckpoint,
+  submitCheckpoint,
+  useSendCheckpointMutation,
+} from '@/src/data/send';
 
 const baseSubmission = {
   experimentSlug: 'ocean',
@@ -51,16 +55,16 @@ describe('submitCheckpoint', () => {
     vi.stubGlobal('fetch', vi.fn());
     // Skip the default exponential backoff so retry tests run instantly;
     // retry count itself still matches the production default (retry: 1).
-    queryClient.setDefaultOptions({ mutations: { retry: 1, retryDelay: 0 } });
+    getImperativeQueryClient().setDefaultOptions({ mutations: { retry: 1, retryDelay: 0 } });
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    queryClient.clear();
-    queryClient.setDefaultOptions({ mutations: { retry: 1 } });
+    getImperativeQueryClient().clear();
+    getImperativeQueryClient().setDefaultOptions({ mutations: { retry: 1 } });
   });
 
-  it('POSTs through the shared queryClient, for non-component callers like the store', async () => {
+  it('POSTs through its own queryClient, for non-component callers like the store', async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 201 }));
 
     await submitCheckpoint(baseSubmission);
