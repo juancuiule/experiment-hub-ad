@@ -23,7 +23,7 @@ const nodeId = (state: InNodeState | unknown) => (state as InNodeState).node.id;
 
 describe('useExperimentStore', () => {
   beforeEach(() => {
-    useExperimentStore.setState({ step: null, isLoading: false, error: null });
+    useExperimentStore.setState({ step: null, history: [], isLoading: false, error: null });
     vi.mocked(send).mockResolvedValue(undefined);
   });
 
@@ -89,6 +89,58 @@ describe('useExperimentStore', () => {
   });
 });
 
+describe('back()', () => {
+  beforeEach(() => {
+    useExperimentStore.setState({ step: null, history: [], isLoading: false, error: null });
+    vi.mocked(send).mockResolvedValue(undefined);
+  });
+
+  it('is a no-op with empty history', async () => {
+    await useExperimentStore.getState().start(flow);
+    const before = useExperimentStore.getState().step;
+    useExperimentStore.getState().back();
+    expect(useExperimentStore.getState().step).toBe(before);
+  });
+
+  it('restores the previous screen after next()', async () => {
+    await useExperimentStore.getState().start(flow);
+    await useExperimentStore.getState().next({ one: 'answer' });
+    expect(nodeId(useExperimentStore.getState().step?.state)).toBe('screen-2');
+
+    useExperimentStore.getState().back();
+    expect(nodeId(useExperimentStore.getState().step?.state)).toBe('screen-1');
+  });
+
+  it('does not call send() (no checkpoint re-fire on the pop itself)', async () => {
+    await useExperimentStore.getState().start(flow);
+    await useExperimentStore.getState().next({ one: 'answer' });
+    vi.mocked(send).mockClear();
+
+    useExperimentStore.getState().back();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('clears a previous error', async () => {
+    await useExperimentStore.getState().start(flow);
+    await useExperimentStore.getState().next({ one: 'answer' });
+    useExperimentStore.setState({ error: 'previous error' });
+
+    useExperimentStore.getState().back();
+    expect(useExperimentStore.getState().error).toBeNull();
+  });
+
+  it('can be followed by next() again, re-submitting from the restored screen', async () => {
+    await useExperimentStore.getState().start(flow);
+    await useExperimentStore.getState().next({ one: 'first answer' });
+    useExperimentStore.getState().back();
+    await useExperimentStore.getState().next({ one: 'revised answer' });
+
+    const { step } = useExperimentStore.getState();
+    expect(nodeId(step?.state)).toBe('screen-2');
+    expect(step?.context.data?.one).toEqual({ one: 'revised answer' });
+  });
+});
+
 const flowWithCheckpointAfterFirst: ExperimentFlow = {
   nodes: [
     { id: 'start', type: 'start' },
@@ -105,7 +157,7 @@ const flowWithCheckpointAfterFirst: ExperimentFlow = {
 
 describe('error state', () => {
   beforeEach(() => {
-    useExperimentStore.setState({ step: null, isLoading: false, error: null });
+    useExperimentStore.setState({ step: null, history: [], isLoading: false, error: null });
     vi.mocked(send).mockResolvedValue(undefined);
   });
 

@@ -1,4 +1,5 @@
 export { deepMerge, mergeContext } from './context';
+export { canGoBack, goBack, pushHistory } from './history';
 export { buildTimingKey, recordEnteredAt, traverseWithTiming } from './timing';
 export {
   getLeafState,

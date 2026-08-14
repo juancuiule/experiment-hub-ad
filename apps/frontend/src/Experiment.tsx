@@ -14,7 +14,7 @@ type Props = {
 
 export default function Experiment(props: Props) {
   const { startingNode, experiment, locale } = props;
-  const { step, isLoading, start, next } = useExperimentStore();
+  const { step, history, isLoading, start, next, back } = useExperimentStore();
   const reset = useExperimentStore((s) => s.reset);
 
   useEffect(() => {
@@ -54,6 +54,16 @@ export default function Experiment(props: Props) {
 
   return (
     <>
+      {history.length > 0 && (
+        <button
+          type="button"
+          onClick={back}
+          disabled={isLoading}
+          className="text-content-secondary hover:text-content-active mb-4 w-fit cursor-pointer text-sm disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          ← Back
+        </button>
+      )}
       {view.stepper && <Stepper {...view.stepper} />}
       {screen ? (
         <Screen
