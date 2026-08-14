@@ -1,10 +1,10 @@
 # Backend service — scaffold and proposal
 
-Status: **proposal, revision 2, pending sign-off** (see EXP-9). The scaffold in
-`apps/backend/` is functional (boots, serves `GET /health`, has passing tests) but
-intentionally does not persist anything yet. Nothing here should be treated as a
-decision until the open questions below (mainly §5, the database choice) are
-confirmed.
+Status: **revision 3, approved by CEO 2026-08-14** (see EXP-9). Local Postgres +
+the JSONB-hybrid `checkpoints` schema (§5) is the confirmed direction for the
+checkpoint-persistence follow-on task. The scaffold in `apps/backend/` is functional
+(boots, serves `GET /health`, has passing tests) but intentionally does not persist
+anything yet — that's the next task, not this one.
 
 **Revision 2 changes** (per CEO feedback on the first proposal, 2026-08-14): dropped
 Supabase entirely — DB is now **local Postgres** (Docker Compose for dev, plain
@@ -12,6 +12,14 @@ Postgres in production, no vendor-hosted product), and researcher auth (§3) no 
 depends on Supabase Auth. §5 also now spells out concretely how the engine's
 JSON-shaped `Context`/checkpoint data maps onto Postgres's relational model, which the
 first revision only gestured at.
+
+**Revision 3 changes** (per CEO approval comment, 2026-08-14): no substantive change
+to the DB decision (local Postgres, JSONB-hybrid `checkpoints` table stands). Added
+§5's "Future consideration: polyglot persistence" subsection to record two things the
+CEO asked to keep on file at approval time: (1) the JSONB-hybrid rationale is the
+recorded, agreed shape for `context` storage, and (2) a Postgres+MongoDB polyglot
+layer was raised as a possibility for later, explicitly deferred pending evidence of
+a real bottleneck — not adopted now.
 
 ## 1. Where the service lives
 
@@ -215,6 +223,32 @@ that Drizzle's `jsonb()` column type and Prisma's `Json` type both handle the
 else in this doc (module layout, auth split, logging) can proceed in parallel or be
 adjusted without re-architecting; the DB choice and the JSONB-hybrid shape above
 determine what the checkpoint repository module and its migration look like.
+
+### Future consideration: polyglot persistence (Postgres + MongoDB in parallel)
+
+Recorded per CEO request on sign-off, not adopted now. The question raised: could
+the `context` JSONB column above eventually move to a document store (e.g. MongoDB)
+running alongside Postgres, with Postgres keeping the relational data (researchers,
+experiments, sessions, auth) and MongoDB owning the schema-less checkpoint payloads?
+
+**Why not now:**
+- The JSONB-hybrid table above already gives us most of what a document store would:
+  schema-less storage per experiment, no per-experiment migrations, and queryable
+  indexes into the blob when needed (§ above).
+- A second database is a second thing to run, back up, monitor, and keep consistent
+  with the first — for a single service with no production traffic yet, that
+  operational cost isn't justified by a query pattern we don't have evidence for.
+- Cross-database consistency (a checkpoint write spanning Postgres session/experiment
+  rows and a Mongo document) adds a distributed-transaction problem that a single
+  Postgres instance with JSONB doesn't have.
+
+**When to revisit:** if, once real experiments are running, `context` JSONB queries
+or aggregations become a measured bottleneck that Postgres's JSON operators and GIN
+indexes can't address cost-effectively — that's the trigger to prototype a Mongo
+(or other document-store) side-by-side, not a decision to make speculatively now.
+If revisited, the checkpoint repository interface already isolates the persistence
+mechanism behind `src/checkpoints/` (see ORM note above), so swapping or splitting
+the backing store there wouldn't require changes outside that module.
 
 ## 6. NestJS + Effect conventions
 
