@@ -1,9 +1,15 @@
-# Experiment design/schema in Postgres — proposal, needs sign-off
+# Experiment design/schema in Postgres — proposal, approved
 
-Status: **revision 2, draft, awaiting sign-off** (EXP-16). This is exploratory per
-the issue — no schema or engine change has been made. This doc exists to get the
-options on record and force a decision before any implementation issue is scoped,
-the same process `docs/backend-service.md` went through for EXP-9.
+Status: **revision 3, approved 2026-08-14** (EXP-16). Direction is signed off;
+Phase 1 (§10) is being split into a scoped implementation issue. §11 and §12 are
+new in this revision. §1–§10 are unchanged from rev 2 and still hold.
+
+**Revision 3 changes** (per reviewer comment approving rev 2, 2026-08-14): the
+reviewer approved option A, phased, and added two requirements: (1) confirm the
+`experiments` (design/config) and `checkpoints` (participant answers) stay as two
+separate tables, not one — §11 confirms this was already rev 2's §9 recommendation
+and makes it explicit; (2) asked whether a database/data-architecture specialist
+should be hired — §12 answers that directly.
 
 **Revision 2 changes** (per reviewer comment on rev 1, 2026-08-14): rev 1
 recommended against option A (`ExperimentFlow` wholesale in Postgres) on the
@@ -363,3 +369,52 @@ storage (§9), and the two problems above — as one large, high-risk change:
 None of this is proposed as final — flagging it as the shape of the decision that
 needs a sign-off round, per the issue's "do not start implementation" instruction.
 §7 asks the specific questions needed to scope Phase 1 as a concrete child issue.
+
+## 11. Two tables, not one — `experiments` (design) vs. `checkpoints` (answers)
+
+Confirmed requirement from sign-off: the researcher-facing side (defining/updating
+`nodes`/`edges`/screens/etc.) and the participant-facing side (submitting answer
+data at a checkpoint) must be two separate tables, not one blob store doing both
+jobs. This was already this proposal's design, not a change:
+
+- **`experiments`** (new, Phase 1) — one row per experiment version, holding the
+  `ExperimentFlow` graph (`nodes`, `edges`, `screens`, `options`) as JSONB, keyed by
+  `experimentSlug` (+ a version identifier once §10 Phase 3 versioning lands).
+  Written by researchers/engineers (the authoring path), read by both
+  `apps/frontend` (Phase 2, to render) and `apps/backend` (to validate checkpoint
+  submissions against, per §8).
+- **`checkpoints`** (existing, `apps/backend/src/db/schema.ts`, landed in EXP-12) —
+  one row per checkpoint submission, holding a participant's accumulated `Context`
+  as JSONB, keyed by `experimentSlug` + `sessionId` + `checkpointName`. Written by
+  participants via `POST /checkpoints`, read for research analysis.
+
+These have different write authors (researchers vs. participants), different write
+frequencies (rare, deliberate edits vs. one row per participant per checkpoint),
+different consumers, and — once researcher auth exists (§6) — different permission
+models entirely. Nothing in this proposal, in any of the three options in §3 or the
+phasing in §10, ever merges them into one table. Phase 1's only schema addition is
+the new `experiments` table; `checkpoints` is unchanged, and Phase 1's validated
+write path (§10) is what lets `apps/backend` check a `checkpoints` insert against
+the matching `experiments` row without either table knowing the other's full shape.
+
+## 12. Does this need a database/data-architecture specialist?
+
+Asked directly at sign-off. Answer, split by phase:
+
+- **Phase 1 (this proposal's immediate scope): no.** It's two Postgres tables in
+  the same instance, one new (`experiments`, JSONB blob + a few indexed text
+  columns — same shape as the existing `checkpoints` table already shipped in
+  EXP-12), one already in production. No new query patterns, no cross-table joins
+  beyond a lookup by `experimentSlug`, no migration of existing data. This is
+  within the current backend engineer's normal scope and doesn't need outside
+  hiring to start.
+- **Phase 3 (versioning + researcher editor): possibly, but not yet.** §10 already
+  flagged this before being asked: "in-flight session pinned to the graph version
+  it started with" is a real concurrency/versioning design question (when does a
+  draft become published, what happens to sessions mid-flight, how long do old
+  versions need to stay queryable), and a multi-researcher editor needs its own
+  permission model once auth exists. That's where a specialist's judgment would
+  actually change the design, not Phase 1's table shape. Recommendation: revisit
+  hiring when Phase 3 is scoped as its own issue, not now — bringing in a
+  specialist before the versioning requirements are written down would have
+  nothing concrete to review.
