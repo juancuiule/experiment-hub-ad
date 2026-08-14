@@ -380,6 +380,10 @@ token — see the auth gap below.
 compose file, so no `.env` is required for local dev; production must set
 `DATABASE_URL` explicitly.
 
+**Request body limit**: `main.ts` raises the JSON body limit to `5mb`
+(Express defaults to `100kb`, which a full `ExperimentFlow` upload with an
+i18n dictionary can plausibly exceed); override with `JSON_BODY_LIMIT`.
+
 **Verified manually** (not part of the CI unit suite, which has no Postgres
 service wired up): ran `postgres:16` in Docker, applied the generated
 migration with `drizzle-kit migrate`, booted the built service, and
