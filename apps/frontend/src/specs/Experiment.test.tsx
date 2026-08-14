@@ -78,7 +78,7 @@ describe('Experiment', () => {
     // and leaves `step` null.
     const brokenFlow = { nodes: [], edges: [], screens: [] } as ExperimentFlow;
 
-    render(<Experiment experiment={brokenFlow} />);
+    render(<Experiment experiment={brokenFlow} experimentSlug="broken" />);
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(/went wrong/i);

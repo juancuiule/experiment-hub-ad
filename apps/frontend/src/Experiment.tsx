@@ -39,7 +39,7 @@ export default function Experiment(props: Props) {
             type="button"
             className="underline"
             onClick={() =>
-              start(experiment, startingNode, locale, experimentSlug)
+              start(experiment, experimentSlug, startingNode, locale)
             }
           >
             Try again
