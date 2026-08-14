@@ -1,3 +1,4 @@
+import { QueryProvider } from '@/src/query-provider';
 import { ThemeProvider } from '@/src/theme-provider';
 import type { Metadata } from 'next';
 import { Montserrat, Overpass_Mono } from 'next/font/google';
@@ -32,14 +33,16 @@ export default function RootLayout({
           'bg-background text-content-primary h-svh antialiased',
         )}
       >
-        <ThemeProvider
-          attribute={'class'}
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-        </ThemeProvider>
+        <QueryProvider>
+          <ThemeProvider
+            attribute={'class'}
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            {children}
+          </ThemeProvider>
+        </QueryProvider>
       </body>
     </html>
   );
