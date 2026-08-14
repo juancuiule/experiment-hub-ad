@@ -195,8 +195,14 @@ authoring bottleneck at all. See §8–§10 for why A's two rev-1 objections (sc
 drift risk, loss of `tsc` safety net) are more tractable than rev 1 assumed, and for
 a phased path that de-risks the largest change in the repo by shipping it in
 stages rather than one migration. Checkpoint-payload validation (this issue's
-original trigger) falls out of Phase 1 for free, via the same mechanism that makes
-authoring safe — see §8.
+original trigger) is unblocked by Phase 1, via the same mechanism that makes
+authoring safe — see §8. "Unblocked" means Phase 1 makes it possible: once the
+`experiments` table exists and `POST /checkpoints` can look up a stored graph by
+`experimentSlug`, it can run the same engine validation the frontend does. It does
+not mean Phase 1 ships that validation automatically — wiring `POST /checkpoints`
+to reject against the stored graph is an explicit step within Phase 1's scope, not
+a free consequence of adding the table. EXP-16's original trigger is unblocked by
+Phase 1, not closed by it.
 
 ## 6. Explicitly out of scope for this proposal
 
@@ -355,6 +361,18 @@ storage (§9), and the two problems above — as one large, high-risk change:
   actually delivers "no redeploy to change an experiment." Decide here whether the
   TS files are deleted (DB fully authoritative) or kept as a local-dev/offline
   fallback (§7 Q4).
+
+  **Phase 2 hard requirement — fetch once per session, never refetch mid-run.**
+  TanStack Query's default `staleTime` (0) means a background refetch or a
+  second tab can return a different graph than the one `traverse()`'s accumulated
+  `State`/`Context` was computed against. Because `traverse()` is stateful relative
+  to the exact graph it started with (node ids, edge wiring, loop templates), a
+  mid-run graph change produces undefined behavior — wrong branch resolution,
+  mismatched loop keys, or a missing node mid-traversal. The query for
+  `ExperimentFlow` must set `staleTime: Infinity` (or equivalent) and must not
+  enable `refetchOnWindowFocus`, `refetchOnMount`, or `refetchInterval` for the
+  duration of a participant session. Cache the fetched graph for the lifetime of
+  the run; never silently replace it.
 - **Phase 3 — versioning (Problem 2) and a researcher-facing editor.** The
   larger, genuinely under-designed piece. Versioning can't ship without deciding
   the product question above; an editor UI needs researcher auth (§6, currently
@@ -377,12 +395,24 @@ Confirmed requirement from sign-off: the researcher-facing side (defining/updati
 data at a checkpoint) must be two separate tables, not one blob store doing both
 jobs. This was already this proposal's design, not a change:
 
-- **`experiments`** (new, Phase 1) — one row per experiment version, holding the
-  `ExperimentFlow` graph (`nodes`, `edges`, `screens`, `options`) as JSONB, keyed by
-  `experimentSlug` (+ a version identifier once §10 Phase 3 versioning lands).
-  Written by researchers/engineers (the authoring path), read by both
-  `apps/frontend` (Phase 2, to render) and `apps/backend` (to validate checkpoint
-  submissions against, per §8).
+- **`experiments`** (new, Phase 1) — one row per experiment slug, holding the
+  `ExperimentFlow` graph (`nodes`, `edges`, `screens`, `options`) as JSONB. A
+  republish (PUT/POST to the write endpoint) overwrites the existing row in place;
+  there is no version history in Phase 1. **This means a bad publish is
+  unrecoverable from the DB alone — the previous graph is gone.** Mitigation until
+  Phase 3 versioning lands: the TS files in `apps/frontend/src/data/experiments/`
+  are the rollback source — Phase 1 keeps them in place unread (per §10, "TS files
+  can stay as-is during this phase"), so git history is already a free, existing
+  backup of every published graph. A rollback after a bad publish means
+  republishing the prior TS-file version through the write endpoint, not a DB-level
+  restore. This is documented here as the chosen mitigation, not deferred to a
+  follow-up decision; a `pg_dump`/point-in-time backup schedule is not adopted for
+  this purpose, since it would duplicate a backup that git already provides. A
+  versioned model (one row per experiment
+  *version*, `checkpoints` gaining an `experimentVersion` column) is scoped to
+  Phase 3 per §10 Problem 2. Written by researchers/engineers (the authoring
+  path), read by both `apps/frontend` (Phase 2, to render) and `apps/backend`
+  (to validate checkpoint submissions against, per §8).
 - **`checkpoints`** (existing, `apps/backend/src/db/schema.ts`, landed in EXP-12) —
   one row per checkpoint submission, holding a participant's accumulated `Context`
   as JSONB, keyed by `experimentSlug` + `sessionId` + `checkpointName`. Written by
