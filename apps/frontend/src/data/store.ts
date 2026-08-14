@@ -4,7 +4,7 @@ import {
   traverseWithTiming,
 } from '@experiment-hub/engine/flow';
 import { Context, ExperimentFlow, FlowStep } from '@experiment-hub/engine/types';
-import { send } from './send';
+import { submitCheckpoint } from './send';
 import { getSessionId } from './session-id';
 import { create } from 'zustand';
 
@@ -41,13 +41,23 @@ export const useExperimentStore = create<ExperimentStore>()((set, get) => ({
         experiment,
         startNodeId,
         {
-          onCheckpoint: async (context, checkpointName) => {
-            await send({
+          // Persistence is intentionally off the participant-blocking path:
+          // returning immediately lets traverse() (and therefore next())
+          // advance the participant regardless of the checkpoint POST's
+          // outcome. submitCheckpoint's own retry (via TanStack Query) runs
+          // in the background; a failure after retries is logged, not
+          // surfaced to the participant, since the answer already advanced
+          // and there is no in-UI retry affordance to route it to.
+          onCheckpoint: (context, checkpointName) => {
+            submitCheckpoint({
               experimentSlug,
               sessionId,
               checkpointName,
               context,
+            }).catch((err) => {
+              console.error('Checkpoint submission failed after retries:', err);
             });
+            return Promise.resolve();
           },
         },
         locale,

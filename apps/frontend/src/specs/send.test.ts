@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import * as React from 'react';
-import { send, sendCheckpoint, useSendCheckpointMutation } from '@/src/data/send';
+import { sendCheckpoint, submitCheckpoint, useSendCheckpointMutation } from '@/src/data/send';
+import { queryClient } from '@/src/data/query-client';
 
 const baseSubmission = {
   experimentSlug: 'ocean',
@@ -11,7 +12,7 @@ const baseSubmission = {
   context: { data: { a: 1 } },
 };
 
-describe('sendCheckpoint / send', () => {
+describe('sendCheckpoint', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
   });
@@ -43,9 +44,45 @@ describe('sendCheckpoint / send', () => {
 
     await expect(sendCheckpoint(baseSubmission)).rejects.toThrow('network error');
   });
+});
 
-  it('send is an alias for sendCheckpoint, for non-component callers like the store', () => {
-    expect(send).toBe(sendCheckpoint);
+describe('submitCheckpoint', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+    // Skip the default exponential backoff so retry tests run instantly;
+    // retry count itself still matches the production default (retry: 1).
+    queryClient.setDefaultOptions({ mutations: { retry: 1, retryDelay: 0 } });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    queryClient.clear();
+    queryClient.setDefaultOptions({ mutations: { retry: 1 } });
+  });
+
+  it('POSTs through the shared queryClient, for non-component callers like the store', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 201 }));
+
+    await submitCheckpoint(baseSubmission);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries once on failure, per queryClient mutations.retry default', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(null, { status: 500 }))
+      .mockResolvedValueOnce(new Response(null, { status: 201 }));
+
+    await submitCheckpoint(baseSubmission);
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects once retries are exhausted', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 500 }));
+
+    await expect(submitCheckpoint(baseSubmission)).rejects.toThrow(/500/);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });
 
