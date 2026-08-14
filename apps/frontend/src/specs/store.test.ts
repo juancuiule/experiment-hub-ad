@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ExperimentFlow, InNodeState } from '@experiment-hub/engine/types';
 import { useExperimentStore } from '@/src/data/store';
 
-vi.mock('@/src/data/send', () => ({ send: vi.fn().mockResolvedValue(undefined) }));
-import { send } from '@/src/data/send';
+vi.mock('@/src/data/send', () => ({ submitCheckpoint: vi.fn().mockResolvedValue(undefined) }));
+import { submitCheckpoint } from '@/src/data/send';
 
 const flow: ExperimentFlow = {
   nodes: [
@@ -24,7 +24,7 @@ const nodeId = (state: InNodeState | unknown) => (state as InNodeState).node.id;
 describe('useExperimentStore', () => {
   beforeEach(() => {
     useExperimentStore.setState({ step: null, isLoading: false, error: null });
-    vi.mocked(send).mockResolvedValue(undefined);
+    vi.mocked(submitCheckpoint).mockResolvedValue(undefined);
   });
 
   it('starts on a null step that is not loading', () => {
@@ -106,16 +106,7 @@ const flowWithCheckpointAfterFirst: ExperimentFlow = {
 describe('error state', () => {
   beforeEach(() => {
     useExperimentStore.setState({ step: null, isLoading: false, error: null });
-    vi.mocked(send).mockResolvedValue(undefined);
-  });
-
-  it('next() failure sets error and resets isLoading to false', async () => {
-    await useExperimentStore.getState().start(flowWithCheckpointAfterFirst, 'test-slug');
-    vi.mocked(send).mockRejectedValueOnce(new Error('network error'));
-    await useExperimentStore.getState().next({ one: 'answer' });
-    const { error, isLoading } = useExperimentStore.getState();
-    expect(error).toBe('Something went wrong while saving your answer. Please try again.');
-    expect(isLoading).toBe(false);
+    vi.mocked(submitCheckpoint).mockResolvedValue(undefined);
   });
 
   it('a subsequent successful next() clears the error', async () => {
@@ -123,5 +114,41 @@ describe('error state', () => {
     useExperimentStore.setState({ error: 'previous error' });
     await useExperimentStore.getState().next({ one: 'answer' });
     expect(useExperimentStore.getState().error).toBeNull();
+  });
+});
+
+describe('checkpoint persistence is off the participant-blocking path', () => {
+  beforeEach(() => {
+    useExperimentStore.setState({ step: null, isLoading: false, error: null });
+  });
+
+  it('next() still advances the step when the checkpoint POST rejects', async () => {
+    vi.mocked(submitCheckpoint).mockResolvedValue(undefined);
+    await useExperimentStore.getState().start(flowWithCheckpointAfterFirst, 'test-slug');
+    vi.mocked(submitCheckpoint).mockRejectedValueOnce(new Error('network error'));
+
+    await useExperimentStore.getState().next({ one: 'answer' });
+
+    const { step, error, isLoading } = useExperimentStore.getState();
+    expect(nodeId(step?.state)).toBe('screen-2');
+    expect(error).toBeNull();
+    expect(isLoading).toBe(false);
+  });
+
+  it("next() does not await submitCheckpoint's promise before resolving", async () => {
+    vi.mocked(submitCheckpoint).mockResolvedValue(undefined);
+    await useExperimentStore.getState().start(flowWithCheckpointAfterFirst, 'test-slug');
+
+    let resolveCheckpoint: () => void = () => {};
+    vi.mocked(submitCheckpoint).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveCheckpoint = () => resolve(undefined);
+      }),
+    );
+
+    await useExperimentStore.getState().next({ one: 'answer' });
+    expect(nodeId(useExperimentStore.getState().step?.state)).toBe('screen-2');
+
+    resolveCheckpoint();
   });
 });
