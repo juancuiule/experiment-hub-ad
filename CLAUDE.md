@@ -145,14 +145,17 @@ Start node selection is driven by query-string params: `?condition=A` matches a 
 
 ## Agent workflow
 
+**One git worktree per issue, always — never share a single checkout across concurrent issues.** This is a hard rule, not a suggestion: an agent working EXP-5 in the shared checkout once found *uncommitted* work from EXP-2/3/4 sitting in the working tree and nearly clobbered it. Even a single agent working one issue at a time in the primary checkout should give any second, parallel issue its own worktree (`git worktree add ../<repo>-<issue> -b feature/<name>`) rather than reusing the primary directory. `agents.sh` (below) automates this for fan-out; use the same pattern by hand if you're spinning up work manually.
+
 When picking up an issue:
 
-1. Branch from `main` as `feature/<name>` or `fix/<name>`.
+1. Create a dedicated git worktree for the issue (see rule above) and branch from `main` as `feature/<name>` or `fix/<name>` inside it.
 2. Implement. Keep changes scoped to the issue.
 3. Run `pnpm lint && pnpm test` before committing. Both must pass.
 4. Use conventional commit prefixes: `feat:`, `fix:`, `test:`, `refactor:`.
 5. Open a PR against `main` with `gh pr create`, referencing the issue number.
 6. CI runs `pnpm test` and `pnpm test:e2e` automatically — both must pass before merge.
+7. Remove the worktree once the PR merges (`git worktree remove`).
 
 **`agents.sh`** at the repo root (untracked; present only in the maintainer's local checkout) is a fan-out script that launches one Claude Code agent per GitHub issue in a tmux grid, each in its own git worktree, for parallel multi-issue development.
 
