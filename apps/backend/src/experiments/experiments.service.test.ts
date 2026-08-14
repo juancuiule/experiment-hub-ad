@@ -1,4 +1,4 @@
-import { Effect, Exit, Cause } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { describe, expect, it } from "vitest";
 import { NotFoundError, UnavailableError, ValidationError } from "../common/effect/errors";
 import { ExperimentsService } from "./experiments.service";
@@ -97,6 +97,15 @@ const malformedFlow = {
   screens: [{ slug: "welcome", components: [] }],
 };
 
+// Reads the domain-error tag off a failed Exit, defaulting to undefined for
+// a defect (Die) so `expect(tag).toBe("ValidationError")` fails loudly on a
+// 500-shaped failure instead of just passing on any Exit.isFailure().
+function failureTag(exit: Exit.Exit<unknown, { readonly _tag: string }>): string | undefined {
+  if (!Exit.isFailure(exit)) return undefined;
+  const failure = Cause.failureOption(exit.cause);
+  return failure._tag === "Some" ? failure.value._tag : undefined;
+}
+
 describe("ExperimentsService", () => {
   describe("put", () => {
     it("accepts a valid ExperimentFlow and persists it", async () => {
@@ -149,8 +158,7 @@ describe("ExperimentsService", () => {
 
       const exit = await Effect.runPromiseExit(service.put("ocean", malformedFlow));
 
-      expect(Exit.isFailure(exit)).toBe(true);
-      expect(failureOf(exit)).toBeInstanceOf(ValidationError);
+      expect(failureTag(exit)).toBe("ValidationError");
       expect(repository.upserted).toHaveLength(0);
     });
 
@@ -160,8 +168,26 @@ describe("ExperimentsService", () => {
 
       const exit = await Effect.runPromiseExit(service.put("ocean", { foo: "bar" }));
 
-      expect(Exit.isFailure(exit)).toBe(true);
-      expect(failureOf(exit)).toBeInstanceOf(ValidationError);
+      expect(failureTag(exit)).toBe("ValidationError");
+      expect(repository.upserted).toHaveLength(0);
+    });
+
+    // GH #19: nodes: [null] and nodes: [{ type: 'screen' }] pass the envelope
+    // schema (nodes is just Schema.Array(Schema.Unknown)) but crash
+    // validateExperiment() itself — e.g. "Cannot read properties of null
+    // (reading 'id')". Without Effect.try around the call, that throw became
+    // an unhandled defect and runController (common/effect/run.ts) rethrew it
+    // as-is, producing a 500 instead of a 400 for a client input error.
+    it.each([
+      ["a null node entry", { nodes: [null], edges: [] }],
+      ["a node missing required props", { nodes: [{ type: "screen" }], edges: [] }],
+    ])("rejects a structurally malformed graph (%s) as a ValidationError, not a defect", async (_case, flow) => {
+      const repository = new FakeRepository();
+      const service = new ExperimentsService(repository);
+
+      const exit = await Effect.runPromiseExit(service.put("ocean", flow));
+
+      expect(failureTag(exit)).toBe("ValidationError");
       expect(repository.upserted).toHaveLength(0);
     });
 

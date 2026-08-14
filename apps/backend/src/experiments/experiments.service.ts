@@ -79,16 +79,32 @@ export class ExperimentsService {
           // silently discard the next field added to ExperimentFlow in
           // packages/engine/types.ts that this envelope hasn't caught up to.
           const flow = payload as ExperimentFlow;
-          const graphErrors = validateExperiment(flow);
-          if (graphErrors.length > 0) {
-            return Effect.fail(
+          // validateExperiment() assumes a structurally sound graph (e.g. every
+          // node has an `id`) and throws on entries like `nodes: [null]` or
+          // `nodes: [{ type: 'screen' }]` that the envelope schema above lets
+          // through. Effect.try turns that throw into a ValidationError instead
+          // of an unhandled defect, which runController would otherwise
+          // rethrow as-is (see common/effect/run.ts) and surface as a 500.
+          return Effect.try({
+            try: () => validateExperiment(flow),
+            catch: (error) =>
               new ValidationError({
-                message: "Experiment failed graph validation",
-                issues: graphErrors.map((error) => `[${error.code}] ${error.message}`),
+                message: "Experiment could not be validated",
+                issues: [error instanceof Error ? error.message : String(error)],
               }),
-            );
-          }
-          return this.repository.upsert(slug, flow);
+          }).pipe(
+            Effect.flatMap((graphErrors): Effect.Effect<ExperimentRecord, ValidationError | UnavailableError> => {
+              if (graphErrors.length > 0) {
+                return Effect.fail(
+                  new ValidationError({
+                    message: "Experiment failed graph validation",
+                    issues: graphErrors.map((error) => `[${error.code}] ${error.message}`),
+                  }),
+                );
+              }
+              return this.repository.upsert(slug, flow);
+            }),
+          );
         },
       ),
       Effect.map((record) => ({
