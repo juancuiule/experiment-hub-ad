@@ -400,12 +400,15 @@ jobs. This was already this proposal's design, not a change:
   republish (PUT/POST to the write endpoint) overwrites the existing row in place;
   there is no version history in Phase 1. **This means a bad publish is
   unrecoverable from the DB alone — the previous graph is gone.** Mitigation until
-  Phase 3 versioning lands: either treat the TS files in
-  `apps/frontend/src/data/experiments/` as the authoritative backup (they remain in
-  git history per their own commit trail) and document that a rollback means
-  republishing the prior TS-file version, or set up a `pg_dump`/point-in-time
-  backup schedule and make that expectation explicit in the ops runbook. Pick one
-  and document it before Phase 1 ships. A versioned model (one row per experiment
+  Phase 3 versioning lands: the TS files in `apps/frontend/src/data/experiments/`
+  are the rollback source — Phase 1 keeps them in place unread (per §10, "TS files
+  can stay as-is during this phase"), so git history is already a free, existing
+  backup of every published graph. A rollback after a bad publish means
+  republishing the prior TS-file version through the write endpoint, not a DB-level
+  restore. This is documented here as the chosen mitigation, not deferred to a
+  follow-up decision; a `pg_dump`/point-in-time backup schedule is not adopted for
+  this purpose, since it would duplicate a backup that git already provides. A
+  versioned model (one row per experiment
   *version*, `checkpoints` gaining an `experimentVersion` column) is scoped to
   Phase 3 per §10 Problem 2. Written by researchers/engineers (the authoring
   path), read by both `apps/frontend` (Phase 2, to render) and `apps/backend`
