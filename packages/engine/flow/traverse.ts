@@ -325,6 +325,28 @@ async function exitToNextNode(
   return enterStep({ state: nState, experiment, context, dataPath, handlers });
 }
 
+/**
+ * Advance out of a data-writing in-node (screen/compute/data) with the context
+ * it produced: end the flow when it has no next sequential node, otherwise
+ * enter that node keeping the current dataPath.
+ */
+async function advanceFromNode(
+  step: FlowStep<InNodeState>,
+  nContext: Context,
+): Promise<FlowStep> {
+  const { experiment, state } = step;
+  const nNode = getNextSequentialNode(experiment, state.node.id);
+  if (!nNode) return { ...step, context: nContext, state: { type: 'end' } };
+
+  return enterStep({
+    state: initialState(experiment, nContext, nNode),
+    experiment,
+    context: nContext,
+    dataPath: step.dataPath,
+    handlers: step.handlers,
+  });
+}
+
 export async function traverse(
   step: FlowStep,
   data?: ContextData,
@@ -465,17 +487,7 @@ export async function traverseInNode(
         state.node.props.slug,
         data ?? {},
       );
-      const nNode = getNextSequentialNode(experiment, state.node.id);
-      if (!nNode) return { ...step, context: nContext, state: { type: 'end' } };
-
-      const nState = initialState(experiment, nContext, nNode);
-      return await enterStep({
-        state: nState,
-        experiment,
-        context: nContext,
-        dataPath: step.dataPath,
-        handlers: step.handlers,
-      });
+      return await advanceFromNode(step, nContext);
     }
     case 'compute': {
       const nodeOutputs: Record<string, unknown> = {};
@@ -493,16 +505,7 @@ export async function traverseInNode(
         state.node.id,
         nodeOutputs,
       );
-      const nNode = getNextSequentialNode(experiment, state.node.id);
-      if (!nNode) return { ...step, context: nContext, state: { type: 'end' } };
-      const nState = initialState(experiment, nContext, nNode);
-      return await enterStep({
-        state: nState,
-        experiment,
-        context: nContext,
-        dataPath: step.dataPath,
-        handlers: step.handlers,
-      });
+      return await advanceFromNode(step, nContext);
     }
     case 'data': {
       const nContext = nestData(
@@ -511,16 +514,7 @@ export async function traverseInNode(
         state.node.id,
         state.node.props.data,
       );
-      const nNode = getNextSequentialNode(experiment, state.node.id);
-      if (!nNode) return { ...step, context: nContext, state: { type: 'end' } };
-      const nState = initialState(experiment, nContext, nNode);
-      return await enterStep({
-        state: nState,
-        experiment,
-        context: nContext,
-        dataPath: step.dataPath,
-        handlers: step.handlers,
-      });
+      return await advanceFromNode(step, nContext);
     }
     case 'end': {
       return { ...step, state: { type: 'end' } };

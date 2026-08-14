@@ -10,23 +10,43 @@ type Props = {
   startingNode?: string;
   experiment: ExperimentFlow;
   locale?: string;
-  experimentSlug?: string;
+  experimentSlug: string;
 };
 
 export default function Experiment(props: Props) {
   const { startingNode, experiment, locale, experimentSlug } = props;
-  const { step, isLoading, start, next } = useExperimentStore();
+  const { step, isLoading, error, start, next } = useExperimentStore();
   const reset = useExperimentStore((s) => s.reset);
 
   useEffect(() => {
     if (!step || step.experiment !== experiment) {
-      start(experiment, startingNode, locale, experimentSlug);
+      start(experiment, experimentSlug, startingNode, locale);
     }
-  }, [experiment, startingNode, locale, experimentSlug]);
+  }, [experiment, experimentSlug, startingNode, locale]);
 
   useEffect(() => reset, [reset]);
 
   if (!step || step.experiment !== experiment) {
+    // A failed start() leaves no step to render, so this is the only place the
+    // start error surfaces — Screen.tsx only covers next() failures.
+    if (error && !isLoading) {
+      return (
+        <div className="flex-1">
+          <p className="text-error my-2" role="alert">
+            {error}
+          </p>
+          <button
+            type="button"
+            className="underline"
+            onClick={() =>
+              start(experiment, startingNode, locale, experimentSlug)
+            }
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
     return <div className="flex-1"></div>;
   }
 
