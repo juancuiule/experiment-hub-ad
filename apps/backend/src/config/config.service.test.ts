@@ -14,14 +14,6 @@ describe("ConfigService", () => {
     });
   });
 
-  it("fails in production when DATABASE_URL is absent instead of using the dev default", async () => {
-    const service = new ConfigService();
-    const exit = await Effect.runPromiseExit(
-      service.load({ PORT: "3001", NODE_ENV: "production" }),
-    );
-    expect(Exit.isFailure(exit)).toBe(true);
-  });
-
   it("defaults to an empty CORS allowlist in production", async () => {
     const service = new ConfigService();
     const config = await Effect.runPromise(

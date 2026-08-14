@@ -12,11 +12,18 @@ const input = {
   context: { data: {} },
 };
 
-// Minimal stand-in for the Drizzle query builder chain used by insert().
-function fakeDbService(returning: () => Promise<unknown[]>): DbService {
+// Minimal stand-in for the Drizzle query builder chains used by insert():
+// the insert().values().onConflictDoNothing().returning() chain, and the
+// select().from().where().limit() fallback used when a conflict means
+// returning() comes back empty.
+function fakeDbService(
+  returning: () => Promise<unknown[]>,
+  select: () => Promise<unknown[]> = async () => [],
+): DbService {
   return {
     db: {
-      insert: () => ({ values: () => ({ returning }) }),
+      insert: () => ({ values: () => ({ onConflictDoNothing: () => ({ returning }) }) }),
+      select: () => ({ from: () => ({ where: () => ({ limit: select }) }) }),
     },
   } as unknown as DbService;
 }
@@ -29,7 +36,19 @@ describe("DrizzleCheckpointsRepository", () => {
     await expect(Effect.runPromise(repository.insert(input))).resolves.toEqual(row);
   });
 
-  it("fails with an UnavailableError when the insert returns no row", async () => {
+  it("falls back to the existing row when a retried POST conflicts on the unique index", async () => {
+    const row = { ...input, id: "id-1", createdAt: "2026-08-14T00:00:00.000Z" };
+    const repository = new DrizzleCheckpointsRepository(
+      fakeDbService(
+        async () => [],
+        async () => [row],
+      ),
+    );
+
+    await expect(Effect.runPromise(repository.insert(input))).resolves.toEqual(row);
+  });
+
+  it("fails with an UnavailableError when the insert conflicts and no existing row is found", async () => {
     const repository = new DrizzleCheckpointsRepository(fakeDbService(async () => []));
 
     const exit = await Effect.runPromiseExit(repository.insert(input));
