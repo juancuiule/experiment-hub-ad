@@ -20,6 +20,12 @@ export const checkpoints = pgTable(
     index("checkpoints_experiment_slug_idx").on(table.experimentSlug),
     index("checkpoints_session_id_idx").on(table.sessionId),
     index("checkpoints_created_at_idx").on(table.createdAt),
+    // Retried-but-actually-succeeded checkpoint POSTs must not insert a
+    // duplicate row — see checkpoints.repository's onConflictDoNothing.
+    uniqueIndex("checkpoints_session_checkpoint_unique").on(
+      table.sessionId,
+      table.checkpointName,
+    ),
   ],
 );
 

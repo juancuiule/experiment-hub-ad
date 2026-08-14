@@ -13,8 +13,13 @@ export class DbService implements OnModuleDestroy {
   constructor(config: ConfigService) {
     // postgres.js connects lazily on first query, so building the client here
     // is synchronous — no need for an async factory provider.
-    const { DATABASE_URL } = Effect.runSync(config.load());
-    this.client = postgres(DATABASE_URL);
+    const { DATABASE_URL, NODE_ENV } = Effect.runSync(config.load());
+    this.client = postgres(DATABASE_URL, {
+      max: 10,
+      // Managed Postgres providers (RDS, Supabase, etc.) require TLS; local
+      // dev/test Postgres does not have a cert configured.
+      ssl: NODE_ENV === "production" ? "require" : false,
+    });
     this.db = drizzle(this.client, { schema });
   }
 

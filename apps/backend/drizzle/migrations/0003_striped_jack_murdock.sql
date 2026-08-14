@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "checkpoints_session_checkpoint_unique" ON "checkpoints" USING btree ("session_id","checkpoint_name");

@@ -15,6 +15,9 @@ async function bootstrap() {
   });
   app.useBodyParser("json", { limit: JSON_BODY_LIMIT });
   app.useLogger(app.get(Logger));
+  // Nest only invokes OnModuleDestroy hooks (e.g. DbService closing the pg
+  // client) on SIGTERM/SIGINT when shutdown hooks are explicitly enabled.
+  app.enableShutdownHooks();
 
   const { PORT, CORS_ORIGINS } = Effect.runSync(app.get(ConfigService).load());
   app.enableCors({
