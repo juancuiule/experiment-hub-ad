@@ -1,4 +1,4 @@
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import { ConfigService } from "./config.service";
 
@@ -58,15 +58,35 @@ describe("ConfigService", () => {
 
   it("fails with a ValidationError for a non-numeric PORT", async () => {
     const service = new ConfigService();
-    const exit = await Effect.runPromiseExit(service.load({ PORT: "not-a-number" }));
-    expect(Exit.isFailure(exit)).toBe(true);
+    const error = await Effect.runPromise(Effect.flip(service.load({ PORT: "not-a-number" })));
+    expect(error._tag).toBe("ValidationError");
   });
 
   it("fails with a ValidationError for an unrecognized NODE_ENV", async () => {
     const service = new ConfigService();
-    const exit = await Effect.runPromiseExit(
-      service.load({ PORT: "3001", NODE_ENV: "staging" }),
+    const error = await Effect.runPromise(
+      Effect.flip(service.load({ PORT: "3001", NODE_ENV: "staging" })),
     );
-    expect(Exit.isFailure(exit)).toBe(true);
+    expect(error._tag).toBe("ValidationError");
+  });
+
+  it("fails with a ValidationError when NODE_ENV=production and DATABASE_URL is unset", async () => {
+    const service = new ConfigService();
+    const error = await Effect.runPromise(
+      Effect.flip(service.load({ PORT: "3001", NODE_ENV: "production" })),
+    );
+    expect(error._tag).toBe("ValidationError");
+  });
+
+  it("honors an explicit DATABASE_URL in production", async () => {
+    const service = new ConfigService();
+    const config = await Effect.runPromise(
+      service.load({
+        PORT: "3001",
+        NODE_ENV: "production",
+        DATABASE_URL: "postgresql://user:pw@db.example.com/prod",
+      }),
+    );
+    expect(config.DATABASE_URL).toBe("postgresql://user:pw@db.example.com/prod");
   });
 });

@@ -1,4 +1,4 @@
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import { UnavailableError } from "../common/effect/errors";
 import { CheckpointsService } from "./checkpoints.service";
@@ -64,28 +64,30 @@ describe("CheckpointsService", () => {
     const repository = new FakeRepository();
     const service = new CheckpointsService(repository);
 
-    const exit = await Effect.runPromiseExit(
-      service.record({ ...validPayload, experimentSlug: undefined }),
+    const error = await Effect.runPromise(
+      Effect.flip(service.record({ ...validPayload, experimentSlug: undefined })),
     );
 
-    expect(Exit.isFailure(exit)).toBe(true);
+    expect(error._tag).toBe("ValidationError");
   });
 
   it("fails with a ValidationError for an empty sessionId", async () => {
     const repository = new FakeRepository();
     const service = new CheckpointsService(repository);
 
-    const exit = await Effect.runPromiseExit(service.record({ ...validPayload, sessionId: "" }));
+    const error = await Effect.runPromise(
+      Effect.flip(service.record({ ...validPayload, sessionId: "" })),
+    );
 
-    expect(Exit.isFailure(exit)).toBe(true);
+    expect(error._tag).toBe("ValidationError");
   });
 
   it("propagates an UnavailableError from the repository", async () => {
     const repository = new FakeRepository(true);
     const service = new CheckpointsService(repository);
 
-    const exit = await Effect.runPromiseExit(service.record(validPayload));
+    const error = await Effect.runPromise(Effect.flip(service.record(validPayload)));
 
-    expect(Exit.isFailure(exit)).toBe(true);
+    expect(error._tag).toBe("UnavailableError");
   });
 });

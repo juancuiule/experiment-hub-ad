@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { Effect } from "effect";
+import { and, eq } from "drizzle-orm";
 import { DbService } from "../db/db.service";
 import { checkpoints } from "../db/schema";
 import { UnavailableError } from "../common/effect/errors";
@@ -16,7 +17,10 @@ export class DrizzleCheckpointsRepository implements CheckpointsRepository {
   insert(input: CheckpointInput): Effect.Effect<CheckpointRecord, UnavailableError> {
     return Effect.tryPromise({
       try: async () => {
-        const [row] = await this.dbService.db
+        // A retried-but-actually-succeeded POST must not create a duplicate
+        // row (see the unique index on session_id + checkpoint_name). On
+        // conflict, fetch and return the row that already exists instead.
+        const [inserted] = await this.dbService.db
           .insert(checkpoints)
           .values({
             experimentSlug: input.experimentSlug,
@@ -25,13 +29,30 @@ export class DrizzleCheckpointsRepository implements CheckpointsRepository {
             stepId: input.stepId,
             context: input.context,
           })
+          .onConflictDoNothing({
+            target: [checkpoints.sessionId, checkpoints.checkpointName],
+          })
           .returning();
+
+        const row =
+          inserted ??
+          (
+            await this.dbService.db
+              .select()
+              .from(checkpoints)
+              .where(
+                and(
+                  eq(checkpoints.sessionId, input.sessionId),
+                  eq(checkpoints.checkpointName, input.checkpointName),
+                ),
+              )
+              .limit(1)
+          )[0];
+
         if (!row) {
-          // Without this the destructured `undefined` would blow up on the
-          // property reads below and surface as the same opaque
-          // "Failed to persist checkpoint" as a connection error.
-          throw new Error("Checkpoint insert returned no row");
+          throw new Error("Checkpoint insert conflicted but no matching row was found");
         }
+
         return {
           id: row.id,
           experimentSlug: row.experimentSlug,
