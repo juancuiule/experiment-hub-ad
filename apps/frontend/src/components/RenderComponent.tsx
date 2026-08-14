@@ -26,6 +26,19 @@ import { TextArea } from './response/TextArea';
 import { TextInput } from './response/TextInput';
 import { TimeInput } from './response/TimeInput';
 
+// An unknown template renders nothing, which is indistinguishable from a
+// deliberately empty screen for whoever authored the experiment. Warn in
+// development so the misconfiguration is visible; production stays silent so
+// participants never see console noise.
+function warnUnknownTemplate(component: RenderProps['component']): null {
+  if (process.env.NODE_ENV === 'development') {
+    console.warn(
+      `RenderComponent: unknown template "${component.template}" for componentFamily "${component.componentFamily}" — nothing was rendered.`,
+    );
+  }
+  return null;
+}
+
 export const RenderComponent = memo(function RenderComponent({
   component,
   form,
@@ -49,7 +62,7 @@ export const RenderComponent = memo(function RenderComponent({
         case 'audio':
           return <Audio component={component} />;
       }
-      return null;
+      return warnUnknownTemplate(component);
     }
 
     case 'response': {
@@ -90,7 +103,7 @@ export const RenderComponent = memo(function RenderComponent({
         case 'likert-scale':
           return <LikertScale {...props} />;
       }
-      return null;
+      return warnUnknownTemplate(component);
     }
 
     case 'layout': {
@@ -135,7 +148,7 @@ export const RenderComponent = memo(function RenderComponent({
             />
           );
       }
-      return null;
+      return warnUnknownTemplate(component);
     }
 
     case 'control': {
@@ -170,7 +183,7 @@ export const RenderComponent = memo(function RenderComponent({
             />
           );
       }
-      return null;
+      return warnUnknownTemplate(component);
     }
   }
 

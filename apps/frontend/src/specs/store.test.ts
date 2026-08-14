@@ -34,7 +34,7 @@ describe('useExperimentStore', () => {
   });
 
   it('start() auto-advances past start/checkpoint onto the first screen', async () => {
-    await useExperimentStore.getState().start(flow);
+    await useExperimentStore.getState().start(flow, 'test-slug');
     const { step, isLoading } = useExperimentStore.getState();
     expect(step?.state.type).toBe('in-node');
     expect(nodeId(step?.state)).toBe('screen-1');
@@ -42,7 +42,7 @@ describe('useExperimentStore', () => {
   });
 
   it('start() records an enteredAt timing for the entered screen', async () => {
-    await useExperimentStore.getState().start(flow);
+    await useExperimentStore.getState().start(flow, 'test-slug');
     const { step } = useExperimentStore.getState();
     const timings = step?.context.timings ?? {};
     const entries = Object.values(timings);
@@ -51,12 +51,12 @@ describe('useExperimentStore', () => {
   });
 
   it('start() honors an explicit startNodeId', async () => {
-    await useExperimentStore.getState().start(flow, 'start');
+    await useExperimentStore.getState().start(flow, 'test-slug', 'start');
     expect(nodeId(useExperimentStore.getState().step?.state)).toBe('screen-1');
   });
 
   it('next() advances to the following screen', async () => {
-    await useExperimentStore.getState().start(flow);
+    await useExperimentStore.getState().start(flow, 'test-slug');
     await useExperimentStore.getState().next({ one: 'answer' });
     const { step, isLoading } = useExperimentStore.getState();
     expect(nodeId(step?.state)).toBe('screen-2');
@@ -70,14 +70,14 @@ describe('useExperimentStore', () => {
   });
 
   it('resets isLoading to false even after start completes', async () => {
-    const promise = useExperimentStore.getState().start(flow);
+    const promise = useExperimentStore.getState().start(flow, 'test-slug');
     expect(useExperimentStore.getState().isLoading).toBe(true);
     await promise;
     expect(useExperimentStore.getState().isLoading).toBe(false);
   });
 
   it('reset() clears step, isLoading, and error after a start()', async () => {
-    await useExperimentStore.getState().start(flow);
+    await useExperimentStore.getState().start(flow, 'test-slug');
     expect(useExperimentStore.getState().step).not.toBeNull();
 
     useExperimentStore.getState().reset();
@@ -110,7 +110,7 @@ describe('error state', () => {
   });
 
   it('next() failure sets error and resets isLoading to false', async () => {
-    await useExperimentStore.getState().start(flowWithCheckpointAfterFirst);
+    await useExperimentStore.getState().start(flowWithCheckpointAfterFirst, 'test-slug');
     vi.mocked(send).mockRejectedValueOnce(new Error('network error'));
     await useExperimentStore.getState().next({ one: 'answer' });
     const { error, isLoading } = useExperimentStore.getState();
@@ -119,7 +119,7 @@ describe('error state', () => {
   });
 
   it('a subsequent successful next() clears the error', async () => {
-    await useExperimentStore.getState().start(flow);
+    await useExperimentStore.getState().start(flow, 'test-slug');
     useExperimentStore.setState({ error: 'previous error' });
     await useExperimentStore.getState().next({ one: 'answer' });
     expect(useExperimentStore.getState().error).toBeNull();

@@ -26,6 +26,12 @@ export class DrizzleCheckpointsRepository implements CheckpointsRepository {
             context: input.context,
           })
           .returning();
+        if (!row) {
+          // Without this the destructured `undefined` would blow up on the
+          // property reads below and surface as the same opaque
+          // "Failed to persist checkpoint" as a connection error.
+          throw new Error("Checkpoint insert returned no row");
+        }
         return {
           id: row.id,
           experimentSlug: row.experimentSlug,

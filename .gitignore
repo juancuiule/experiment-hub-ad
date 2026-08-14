@@ -60,6 +60,8 @@ docs/experiment-validation-review.md
 # Claude Code agent tooling (machine-local)
 # .claude/settings.json and settings.local.json remain tracked
 .agents/
-.claude/skills/
+.claude/skills/*
+# ...except explain-diff, which the PR workflow in CLAUDE.md requires
+!.claude/skills/explain-diff/
 .claude/worktrees/
 skills-lock.json

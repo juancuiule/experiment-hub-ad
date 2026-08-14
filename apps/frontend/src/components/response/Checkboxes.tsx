@@ -5,14 +5,15 @@ import {
   defaultPerTemplate,
   Option,
 } from '@experiment-hub/engine/components/response';
+import { resolveOptions } from '@experiment-hub/engine/resolve';
 import { Context, ContextData } from '@experiment-hub/engine/types';
 import * as CheckboxPrimitive from '@radix-ui/react-checkbox';
 import { Check } from 'lucide-react';
 import { Controller, UseFormReturn } from 'react-hook-form';
-import { twMerge } from 'tailwind-merge';
 import { Label } from '../Label';
-import { resolveOptions } from '@experiment-hub/engine/resolve';
-import { FieldError, OptionTooltip } from '../primitives';
+import { OptionTooltip } from '../primitives';
+import { Field } from './Field';
+import { CHECKBOX_ROOT_CLASS } from './styles';
 
 type Props = {
   component: CheckboxesComponent;
@@ -22,20 +23,21 @@ type Props = {
 };
 
 export function Checkboxes({ component, form, context, sharedOptions }: Props) {
-  const {
-    control,
-    formState: { errors },
-  } = form;
   const { dataKey } = component.props;
 
   return (
     <Controller
-      control={control}
+      control={form.control}
       name={dataKey}
       defaultValue={defaultPerTemplate(component)}
       render={({ field }) => (
-        <div className="flex flex-col gap-1">
-          <Label context={context} tooltip={component.props.labelTooltip}>{component.props.label}</Label>
+        <Field
+          form={form}
+          context={context}
+          dataKey={dataKey}
+          label={component.props.label}
+          labelTooltip={component.props.labelTooltip}
+        >
           <div className="flex flex-col gap-2">
             {resolveOptions(
               component.props.options,
@@ -60,12 +62,7 @@ export function Checkboxes({ component, form, context, sharedOptions }: Props) {
                           : current.filter((v: string) => v !== opt.value),
                       );
                     }}
-                    className={twMerge(
-                      'border-border-default size-4 rounded-sm border',
-                      'flex shrink-0 items-center justify-center',
-                      'data-[state=checked]:bg-content-active data-[state=checked]:border-content-active',
-                      'cursor-pointer transition duration-75 ease-out active:scale-95',
-                    )}
+                    className={CHECKBOX_ROOT_CLASS}
                   >
                     <CheckboxPrimitive.Indicator>
                       <Check className="text-content-inverted size-4" />
@@ -83,10 +80,7 @@ export function Checkboxes({ component, form, context, sharedOptions }: Props) {
               );
             })}
           </div>
-          <FieldError
-            message={errors[dataKey]?.message as string | undefined}
-          />
-        </div>
+        </Field>
       )}
     />
   );

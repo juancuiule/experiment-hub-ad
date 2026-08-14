@@ -2,10 +2,13 @@ import {
   BadRequestException,
   HttpException,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { Cause, Effect, Exit } from "effect";
 import { DomainError } from "./errors";
+
+const logger = new Logger("runController");
 
 function toHttpException(error: DomainError): HttpException {
   switch (error._tag) {
@@ -16,7 +19,11 @@ function toHttpException(error: DomainError): HttpException {
     case "ValidationError":
       return new BadRequestException(error.issues ?? error.message);
     case "UnavailableError":
-      return new InternalServerErrorException(error.message);
+      // `cause` holds the driver/network error that actually explains the
+      // failure and is never sent to the client, so log it here — otherwise
+      // the only trace of it is a bare 500.
+      logger.error(error.message, toStack(error.cause));
+      return new InternalServerErrorException(error.message, { cause: error.cause });
   }
 }
 
@@ -36,5 +43,12 @@ export async function runController<A>(effect: Effect.Effect<A, DomainError>): P
   if (failure._tag === "Some") {
     throw toHttpException(failure.value);
   }
-  throw Cause.squash(exit.cause);
+  const defect = Cause.squash(exit.cause);
+  logger.error("Unexpected defect while running controller effect", toStack(defect));
+  throw defect;
+}
+
+function toStack(cause: unknown): string | undefined {
+  if (cause === undefined) return undefined;
+  return cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
 }

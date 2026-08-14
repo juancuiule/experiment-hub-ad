@@ -18,6 +18,44 @@ function getFormulaInputValue(
   return getValue(input, context);
 }
 
+function numericInputs(
+  inputs: string[],
+  context: Context,
+  nodeOutputs: ContextData,
+): number[] {
+  return inputs.map(
+    (inp) => Number(getFormulaInputValue(inp, context, nodeOutputs)) || 0,
+  );
+}
+
+// Empty input sets yield 0 for every op, including min/max.
+function aggregate(
+  op: 'sum' | 'mean' | 'min' | 'max',
+  values: number[],
+): number {
+  switch (op) {
+    case 'sum':
+      return values.reduce((a, b) => a + b, 0);
+    case 'mean':
+      return values.length === 0
+        ? 0
+        : values.reduce((a, b) => a + b, 0) / values.length;
+    case 'min':
+      return values.length === 0 ? 0 : Math.min(...values);
+    case 'max':
+      return values.length === 0 ? 0 : Math.max(...values);
+  }
+}
+
+// Loop iteration data nests under the compute node's dataPath (e.g.
+// data[pathId][loopId]), so walk dataPath before indexing by loopId.
+function resolveDataPath(context: Context, dataPath?: string[]): any {
+  return (dataPath ?? []).reduce<any>(
+    (obj, key) => (obj == null ? undefined : obj[key]),
+    context.data ?? {},
+  );
+}
+
 export function evaluateFormula(
   formula: Formula,
   context: Context,
@@ -26,31 +64,13 @@ export function evaluateFormula(
 ): any {
   switch (formula.type) {
     case 'sum':
-      return formula.inputs.reduce(
-        (acc, inp) =>
-          acc + (Number(getFormulaInputValue(inp, context, nodeOutputs)) || 0),
-        0,
+    case 'mean':
+    case 'min':
+    case 'max':
+      return aggregate(
+        formula.type,
+        numericInputs(formula.inputs, context, nodeOutputs),
       );
-    case 'mean': {
-      const vals = formula.inputs.map(
-        (inp) => Number(getFormulaInputValue(inp, context, nodeOutputs)) || 0,
-      );
-      return vals.length === 0
-        ? 0
-        : vals.reduce((a, b) => a + b, 0) / vals.length;
-    }
-    case 'min': {
-      const vals = formula.inputs.map(
-        (inp) => Number(getFormulaInputValue(inp, context, nodeOutputs)) || 0,
-      );
-      return vals.length === 0 ? 0 : Math.min(...vals);
-    }
-    case 'max': {
-      const vals = formula.inputs.map(
-        (inp) => Number(getFormulaInputValue(inp, context, nodeOutputs)) || 0,
-      );
-      return vals.length === 0 ? 0 : Math.max(...vals);
-    }
     case 'count':
       return formula.inputs.filter((inp) => {
         const val = getFormulaInputValue(inp, context, nodeOutputs);
@@ -125,14 +145,9 @@ export function evaluateFormula(
     }
     case 'collect-loop': {
       // Merge every iteration's responses into one flat object. Iterations are
-      // read from the loop's published order; the iteration data nests under the
-      // compute node's dataPath (e.g. data[pathId][loopId]) just like
-      // loop-aggregate, so walk dataPath before indexing by loopId.
+      // read from the loop's published order.
       const order = context.loops?.[formula.loopId]?.order ?? [];
-      const loopDataRoot = (dataPath ?? []).reduce<any>(
-        (obj, key) => (obj == null ? undefined : obj[key]),
-        context.data ?? {},
-      );
+      const loopDataRoot = resolveDataPath(context, dataPath);
       const iterations = loopDataRoot?.[formula.loopId] as
         | Record<string, Record<string, unknown>>
         | undefined;
@@ -165,13 +180,8 @@ export function evaluateFormula(
       const loopCtx = context.loops?.[formula.loopId];
       const order = loopCtx?.order ?? [];
       const items = loopCtx?.values ?? [];
-      // context.loops is keyed absolutely, but the loop's *iteration data* nests
-      // under the compute node's dataPath (e.g. data[pathId][loopId] when both
-      // are inside a path). Walk dataPath before indexing by loopId.
-      const loopDataRoot = (dataPath ?? []).reduce<any>(
-        (obj, key) => (obj == null ? undefined : obj[key]),
-        context.data ?? {},
-      );
+      // context.loops is keyed absolutely, but the iteration data is dataPath-relative.
+      const loopDataRoot = resolveDataPath(context, dataPath);
       const iterations = loopDataRoot?.[formula.loopId] as
         | Record<string, Record<string, Record<string, unknown>>>
         | undefined;
@@ -206,20 +216,8 @@ export function evaluateFormula(
         }
       });
 
-      switch (formula.op) {
-        case 'count':
-          return count;
-        case 'sum':
-          return collected.reduce((a, b) => a + b, 0);
-        case 'mean':
-          return collected.length === 0
-            ? 0
-            : collected.reduce((a, b) => a + b, 0) / collected.length;
-        case 'min':
-          return collected.length === 0 ? 0 : Math.min(...collected);
-        case 'max':
-          return collected.length === 0 ? 0 : Math.max(...collected);
-      }
+      if (formula.op === 'count') return count;
+      return aggregate(formula.op, collected);
     }
   }
 }

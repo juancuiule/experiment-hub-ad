@@ -50,24 +50,40 @@ describe('Experiment', () => {
   });
 
   it('restarts and shows new content when experiment prop changes', async () => {
-    const { rerender } = render(<Experiment experiment={flowA} />);
+    const { rerender } = render(<Experiment experiment={flowA} experimentSlug="experiment-a" />);
     await screen.findByText('Content from experiment A');
 
-    rerender(<Experiment experiment={flowB} />);
+    rerender(<Experiment experiment={flowB} experimentSlug="experiment-b" />);
 
     await screen.findByText('Content from experiment B');
-    expect(screen.queryByText('Content from experiment A')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Content from experiment A'),
+    ).not.toBeInTheDocument();
   });
 
   it('does not restart when the same experiment reference is rerendered', async () => {
-    const { rerender } = render(<Experiment experiment={flowA} />);
+    const { rerender } = render(<Experiment experiment={flowA} experimentSlug="experiment-a" />);
     await screen.findByText('Content from experiment A');
     const stepBefore = useExperimentStore.getState().step;
 
-    rerender(<Experiment experiment={flowA} />);
+    rerender(<Experiment experiment={flowA} experimentSlug="experiment-a" />);
 
     await waitFor(() => {
       expect(useExperimentStore.getState().step).toBe(stepBefore);
     });
+  });
+
+  it('surfaces a start failure instead of rendering a blank screen', async () => {
+    // No start node reachable — startExperiment throws, so start() sets `error`
+    // and leaves `step` null.
+    const brokenFlow = { nodes: [], edges: [], screens: [] } as ExperimentFlow;
+
+    render(<Experiment experiment={brokenFlow} />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/went wrong/i);
+    expect(
+      screen.getByRole('button', { name: /try again/i }),
+    ).toBeInTheDocument();
   });
 });

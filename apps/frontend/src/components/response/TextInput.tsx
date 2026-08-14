@@ -1,12 +1,10 @@
 'use client';
 
 import { TextInputComponent } from '@experiment-hub/engine/components/response';
-import { resolveValuesInString } from '@experiment-hub/engine/resolve';
 import { Context, ContextData } from '@experiment-hub/engine/types';
 import { UseFormReturn } from 'react-hook-form';
 import { Input } from '../Input';
-import { Label } from '../Label';
-import { FieldError } from '../primitives';
+import { Field, resolveOptionalText } from './Field';
 
 type Props = {
   component: TextInputComponent;
@@ -15,26 +13,23 @@ type Props = {
 };
 
 export function TextInput({ component, form, context }: Props) {
-  const {
-    register,
-    formState: { errors },
-  } = form;
   const { dataKey, placeholder } = component.props;
 
   return (
-    <div className="flex flex-col gap-1">
-      <Label htmlFor={dataKey} context={context} tooltip={component.props.labelTooltip}>
-        {component.props.label}
-      </Label>
+    <Field
+      form={form}
+      context={context}
+      dataKey={dataKey}
+      label={component.props.label}
+      labelTooltip={component.props.labelTooltip}
+      labelHtmlFor={dataKey}
+    >
       <Input
         id={dataKey}
-        {...register(dataKey)}
+        {...form.register(dataKey)}
         type="text"
-        placeholder={
-          placeholder ? resolveValuesInString(placeholder, context) : undefined
-        }
+        placeholder={resolveOptionalText(placeholder, context)}
       />
-      <FieldError message={errors[dataKey]?.message as string | undefined} />
-    </div>
+    </Field>
   );
 }

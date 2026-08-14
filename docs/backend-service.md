@@ -378,7 +378,13 @@ token — see the auth gap below.
 `apps/backend/drizzle/migrations/`. `ConfigService`'s `DATABASE_URL` default
 (`postgresql://postgres:postgres@localhost:5432/experiment_hub`) matches this
 compose file, so no `.env` is required for local dev; production must set
-`DATABASE_URL` explicitly.
+`DATABASE_URL` explicitly — when `NODE_ENV=production` the local default is
+not applied and startup fails instead.
+
+**CORS**: `CORS_ORIGINS` is a comma-separated browser-origin allowlist,
+defaulting to `http://localhost:3000` outside production and to an empty
+allowlist (no cross-origin caller trusted) in production, so a deployment
+must name its frontend origin explicitly.
 
 **Request body limit**: `main.ts` raises the JSON body limit to `5mb`
 (Express defaults to `100kb`, which a full `ExperimentFlow` upload with an
