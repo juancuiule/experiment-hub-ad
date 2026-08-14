@@ -77,12 +77,30 @@ export function buildFieldSchema(component: ResponseComponent): z.ZodTypeAny {
 
     case 'numeric-input': {
       const { min, max } = component.props;
-      let base = z.coerce.number();
-      if (min !== undefined)
-        base = base.min(min, errorMessage ?? `Must be at least ${min}`);
-      if (max !== undefined)
-        base = base.max(max, errorMessage ?? `Must be at most ${max}`);
-      return required ? base : base.optional();
+      const buildCoerceBase = () => {
+        let base = z.coerce.number();
+        if (min !== undefined)
+          base = base.min(min, errorMessage ?? `Must be at least ${min}`);
+        if (max !== undefined)
+          base = base.max(max, errorMessage ?? `Must be at most ${max}`);
+        return base;
+      };
+
+      // An untouched input is null and an emptied one reports NaN; both must be
+      // gated before `z.coerce.number()` silently turns them into 0.
+      if (required) {
+        return z
+          .any()
+          .refine((v) => !isBlankNumeric(v), { message: msg })
+          .pipe(buildCoerceBase() as z.ZodTypeAny) as z.ZodTypeAny;
+      }
+
+      // not required: a blank answer stays null (user didn't answer),
+      // but any value that is present must be valid
+      return z.preprocess(
+        (v) => (isBlankNumeric(v) ? null : v),
+        z.union([z.null(), buildCoerceBase()]),
+      ) as z.ZodTypeAny;
     }
 
     case 'slider': {
@@ -161,4 +179,12 @@ export function buildFieldSchema(component: ResponseComponent): z.ZodTypeAny {
         : z.boolean();
     }
   }
+}
+
+// A numeric answer that carries no value: never touched (null/undefined),
+// emptied in the DOM (''), or reported as NaN by `valueAsNumber`.
+function isBlankNumeric(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  return typeof value === 'number' && Number.isNaN(value);
 }
