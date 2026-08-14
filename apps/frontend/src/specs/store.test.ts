@@ -25,6 +25,7 @@ describe('useExperimentStore', () => {
   beforeEach(() => {
     useExperimentStore.setState({ step: null, isLoading: false, error: null });
     vi.mocked(send).mockResolvedValue(undefined);
+    window.localStorage.clear();
   });
 
   it('starts on a null step that is not loading', () => {
@@ -107,6 +108,7 @@ describe('error state', () => {
   beforeEach(() => {
     useExperimentStore.setState({ step: null, isLoading: false, error: null });
     vi.mocked(send).mockResolvedValue(undefined);
+    window.localStorage.clear();
   });
 
   it('next() failure sets error and resets isLoading to false', async () => {

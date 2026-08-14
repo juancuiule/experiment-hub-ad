@@ -2313,6 +2313,146 @@ describe('compute node reference checks', () => {
     expect(codes(flow)).toEqual([]);
   });
 
+  it('passes when a branch condition references a compute (score) output via $$', () => {
+    // The score-variable pattern: sum Likert items in a compute node, then
+    // branch on the resulting $$computeId.outputKey — no new node type needed.
+    const flow: ExperimentFlow = {
+      nodes: [
+        start,
+        makeScreen('s1', 'q'),
+        makeCompute('score', [
+          {
+            outputKey: 'total',
+            formula: { type: 'sum', inputs: ['$$q.a', '$$q.b', '$$q.c'] },
+          },
+        ]),
+        {
+          id: 'branch-score',
+          type: 'branch' as const,
+          props: {
+            name: 'Score branch',
+            branches: [
+              {
+                id: 'high',
+                name: 'High',
+                config: {
+                  type: 'simple',
+                  operator: 'gte',
+                  dataKey: '$$score.total',
+                  value: 10,
+                },
+              },
+            ],
+          },
+        },
+        makeScreen('s-high', 'high-screen'),
+        makeScreen('s-default', 'default-screen'),
+        end,
+      ],
+      edges: [
+        seq('start', 's1'),
+        seq('s1', 'score'),
+        seq('score', 'branch-score'),
+        {
+          type: 'branch-condition',
+          from: 'branch-score.high',
+          to: 's-high',
+        },
+        { type: 'branch-default', from: 'branch-score', to: 's-default' },
+        seq('s-high', 'end'),
+        seq('s-default', 'end'),
+      ],
+      screens: [
+        {
+          slug: 'q',
+          components: [
+            {
+              componentFamily: 'response',
+              template: 'numeric-input',
+              props: { dataKey: 'a', label: 'A' },
+            },
+            {
+              componentFamily: 'response',
+              template: 'numeric-input',
+              props: { dataKey: 'b', label: 'B' },
+            },
+            {
+              componentFamily: 'response',
+              template: 'numeric-input',
+              props: { dataKey: 'c', label: 'C' },
+            },
+          ],
+        },
+        { slug: 'high-screen', components: [] },
+        { slug: 'default-screen', components: [] },
+      ],
+    };
+    expect(codes(flow)).toEqual([]);
+  });
+
+  it('reports unavailable-reference when a branch condition references a compute output that was never declared', () => {
+    const flow: ExperimentFlow = {
+      nodes: [
+        start,
+        makeScreen('s1', 'q'),
+        makeCompute('score', [
+          {
+            outputKey: 'total',
+            formula: { type: 'sum', inputs: ['$$q.a'] },
+          },
+        ]),
+        {
+          id: 'branch-score',
+          type: 'branch' as const,
+          props: {
+            name: 'Score branch',
+            branches: [
+              {
+                id: 'high',
+                name: 'High',
+                config: {
+                  type: 'simple',
+                  operator: 'gte',
+                  // typo: "totall" was never declared as an output key
+                  dataKey: '$$score.totall',
+                  value: 10,
+                },
+              },
+            ],
+          },
+        },
+        makeScreen('s-high', 'high-screen'),
+        end,
+      ],
+      edges: [
+        seq('start', 's1'),
+        seq('s1', 'score'),
+        seq('score', 'branch-score'),
+        {
+          type: 'branch-condition',
+          from: 'branch-score.high',
+          to: 's-high',
+        },
+        { type: 'branch-default', from: 'branch-score', to: 's-high' },
+        seq('s-high', 'end'),
+      ],
+      screens: [
+        {
+          slug: 'q',
+          components: [
+            {
+              componentFamily: 'response',
+              template: 'numeric-input',
+              props: { dataKey: 'a', label: 'A' },
+            },
+          ],
+        },
+        { slug: 'high-screen', components: [] },
+      ],
+    };
+    expect(codes(flow)).toContain('unavailable-reference');
+  });
+
   it('reports duplicate-lookup-key when a lookup table has two entries with the same when value', () => {
     const flow: ExperimentFlow = {
       nodes: [

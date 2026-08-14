@@ -47,6 +47,7 @@ const flowB: ExperimentFlow = {
 describe('Experiment', () => {
   beforeEach(() => {
     useExperimentStore.setState({ step: null, isLoading: false, error: null });
+    window.localStorage.clear();
   });
 
   it('restarts and shows new content when experiment prop changes', async () => {
